@@ -1,0 +1,16 @@
+question,answer
+How do I create an account?,Visit our website and click "Sign Up" in the top right. Enter your email and choose a password. You'll receive a verification email within 2 minutes.
+What payment methods do you accept?,"We accept Visa, Mastercard, American Express, PayPal, and bank transfers. All payments are processed securely through Stripe."
+How do I cancel my subscription?,Go to Settings > Billing > Cancel Subscription. Your access continues until the end of your current billing period. No cancellation fees apply.
+Do you offer a free trial?,"Yes! All new accounts get a 14-day free trial with full access to all features. No credit card required to start."
+How do I reset my password?,Click "Forgot Password" on the login page. Enter your email and we'll send a reset link. The link expires after 1 hour.
+What are your business hours?,Our support team is available Monday to Friday 9AM-6PM WAT. AI chat support is available 24/7.
+How do I upgrade my plan?,Go to Settings > Billing > Change Plan. Select your new plan and confirm. Upgrades take effect immediately with prorated billing.
+Can I get a refund?,"We offer full refunds within 30 days of purchase. After 30 days, we provide prorated refunds for annual plans. Contact support to request a refund."
+How do I export my data?,Navigate to Settings > Data > Export. Choose your format (CSV or JSON) and click Download. Large exports may take a few minutes to prepare.
+Is my data secure?,"Yes. We use AES-256 encryption at rest and TLS 1.3 in transit. All data is stored in SOC 2 compliant data centers. We never share your data with third parties."
+How do I add team members?,Go to Settings > Team > Invite Members. Enter their email addresses and assign roles (Admin, Editor, or Viewer). They'll receive an invitation email.
+What integrations do you support?,"We integrate with Slack, Google Workspace, Microsoft Teams, Zapier, Notion, Trello, and GitHub. Visit our Integrations page for the full list."
+How do I contact support?,"You can reach us via this chat, email at support@company.com, or schedule a call at company.com/book-call. Average response time is under 2 hours."
+Do you offer custom enterprise plans?,"Yes! Enterprise plans include custom integrations, dedicated account manager, SLA guarantees, SSO, and priority support. Contact sales@company.com for a quote."
+What happens when my trial ends?,"Your account switches to our free tier with limited features. No charges are made automatically. Upgrade anytime to restore full access."

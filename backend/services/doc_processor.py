@@ -49,7 +49,7 @@ def _extract_docx(path: str) -> str:
 def _extract_csv(path: str) -> List[dict]:
     try:
         import pandas as pd
-        df = pd.read_csv(path)
+        df = pd.read_csv(path, quotechar='"', escapechar='\\', on_bad_lines='skip')
         df.columns = [c.lower().strip() for c in df.columns]
         if "question" in df.columns and "answer" in df.columns:
             pairs = []
@@ -60,7 +60,8 @@ def _extract_csv(path: str) -> List[dict]:
                     pairs.append({"q": q, "a": a})
             return pairs
         return []
-    except Exception:
+    except Exception as e:
+        print(f"CSV ERROR: {e}")
         return []
 
 
