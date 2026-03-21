@@ -8,7 +8,11 @@ export default defineConfig({
       '/api': {
         target: 'http://localhost:8000',
         changeOrigin: true,
-      }
+      },
+      '/widget.js': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      },
     }
   }
 })

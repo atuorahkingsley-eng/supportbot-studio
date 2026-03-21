@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c \":*)",
+      "Bash(npm run build)",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(''login:'', d\\)\")"
+    ]
+  }
+}

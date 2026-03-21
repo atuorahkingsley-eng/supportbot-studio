@@ -1,8 +1,17 @@
-from pydantic_settings import BaseSettings
-from typing import Optional
+import os
+from pathlib import Path
+from dotenv import load_dotenv
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Load .env into os.environ before pydantic-settings instantiates
+_env_path = Path(__file__).parent.parent / ".env"
+if _env_path.exists():
+    load_dotenv(str(_env_path), override=True)
 
 
 class Settings(BaseSettings):
+    model_config = SettingsConfigDict(extra="ignore")
+
     anthropic_api_key: str = ""
 
     telegram_bot_token: str = ""
@@ -21,10 +30,15 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./data/supportbot.db"
     upload_dir: str = "./uploads"
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        extra = "ignore"
+    # Multi-tenant auth
+    jwt_secret_key: str = "dev-insecure-key-change-this-in-production"
+    super_admin_username: str = "admin"
+    super_admin_password: str = "changeme123"
+
+    # Auto-healing
+    auto_heal_enabled: bool = True
+    health_check_interval_minutes: int = 15
+    max_heal_retries: int = 2
 
 
 settings = Settings()

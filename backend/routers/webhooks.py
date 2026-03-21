@@ -4,8 +4,9 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional, List
 
-from backend.database import get_db, WebhookConfig
+from backend.database import get_db, WebhookConfig, Tenant
 from backend.services.webhook_sender import dispatch_webhook
+from backend.services.auth import get_current_client
 
 router = APIRouter(prefix="/api/webhooks", tags=["webhooks"])
 
@@ -38,13 +39,20 @@ class WebhookResponse(BaseModel):
 
 
 @router.get("", response_model=List[WebhookResponse])
-def list_webhooks(db: Session = Depends(get_db)):
-    return db.query(WebhookConfig).all()
+def list_webhooks(
+    db: Session = Depends(get_db),
+    tenant: Tenant = Depends(get_current_client),
+):
+    return db.query(WebhookConfig).filter(WebhookConfig.bot_id == tenant.bot_id).all()
 
 
 @router.post("", response_model=WebhookResponse)
-def create_webhook(data: WebhookCreate, db: Session = Depends(get_db)):
-    wh = WebhookConfig(**data.model_dump())
+def create_webhook(
+    data: WebhookCreate,
+    db: Session = Depends(get_db),
+    tenant: Tenant = Depends(get_current_client),
+):
+    wh = WebhookConfig(bot_id=tenant.bot_id, **data.model_dump())
     db.add(wh)
     db.commit()
     db.refresh(wh)
@@ -52,8 +60,16 @@ def create_webhook(data: WebhookCreate, db: Session = Depends(get_db)):
 
 
 @router.put("/{webhook_id}", response_model=WebhookResponse)
-def update_webhook(webhook_id: int, data: WebhookUpdate, db: Session = Depends(get_db)):
-    wh = db.query(WebhookConfig).filter(WebhookConfig.id == webhook_id).first()
+def update_webhook(
+    webhook_id: int,
+    data: WebhookUpdate,
+    db: Session = Depends(get_db),
+    tenant: Tenant = Depends(get_current_client),
+):
+    wh = db.query(WebhookConfig).filter(
+        WebhookConfig.id == webhook_id,
+        WebhookConfig.bot_id == tenant.bot_id,
+    ).first()
     if not wh:
         raise HTTPException(status_code=404, detail="Webhook not found")
     for field, value in data.model_dump(exclude_none=True).items():
@@ -64,8 +80,15 @@ def update_webhook(webhook_id: int, data: WebhookUpdate, db: Session = Depends(g
 
 
 @router.delete("/{webhook_id}")
-def delete_webhook(webhook_id: int, db: Session = Depends(get_db)):
-    wh = db.query(WebhookConfig).filter(WebhookConfig.id == webhook_id).first()
+def delete_webhook(
+    webhook_id: int,
+    db: Session = Depends(get_db),
+    tenant: Tenant = Depends(get_current_client),
+):
+    wh = db.query(WebhookConfig).filter(
+        WebhookConfig.id == webhook_id,
+        WebhookConfig.bot_id == tenant.bot_id,
+    ).first()
     if not wh:
         raise HTTPException(status_code=404, detail="Webhook not found")
     db.delete(wh)
@@ -74,8 +97,15 @@ def delete_webhook(webhook_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/{webhook_id}/test")
-async def test_webhook(webhook_id: int, db: Session = Depends(get_db)):
-    wh = db.query(WebhookConfig).filter(WebhookConfig.id == webhook_id).first()
+async def test_webhook(
+    webhook_id: int,
+    db: Session = Depends(get_db),
+    tenant: Tenant = Depends(get_current_client),
+):
+    wh = db.query(WebhookConfig).filter(
+        WebhookConfig.id == webhook_id,
+        WebhookConfig.bot_id == tenant.bot_id,
+    ).first()
     if not wh:
         raise HTTPException(status_code=404, detail="Webhook not found")
 

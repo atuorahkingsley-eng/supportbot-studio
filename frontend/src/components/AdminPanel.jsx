@@ -140,6 +140,35 @@ export default function AdminPanel({ config, setConfig }) {
             style={{ resize: 'vertical' }}
           />
         </div>
+        {/* Phase 4: Voice toggle */}
+        <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 12 }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+            <div style={{ position: 'relative', width: 40, height: 22 }}>
+              <input
+                type="checkbox"
+                checked={form.voice_enabled !== false}
+                onChange={e => setForm(prev => ({ ...prev, voice_enabled: e.target.checked }))}
+                style={{ opacity: 0, width: 0, height: 0, position: 'absolute' }}
+              />
+              <div style={{
+                position: 'absolute', inset: 0,
+                background: form.voice_enabled !== false ? 'var(--accent, #6366F1)' : 'var(--border)',
+                borderRadius: 999, transition: 'background 0.2s',
+              }} />
+              <div style={{
+                position: 'absolute', top: 3,
+                left: form.voice_enabled !== false ? 20 : 3,
+                width: 16, height: 16,
+                background: '#fff', borderRadius: '50%',
+                transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+              }} />
+            </div>
+            <span style={{ fontSize: 14, fontWeight: 500 }}>🎤 Enable Voice Input</span>
+          </label>
+          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+            Customers can speak their messages using the browser mic
+          </span>
+        </div>
         <button className="btn btn-primary" onClick={saveConfig}>Save Configuration</button>
       </div>
 

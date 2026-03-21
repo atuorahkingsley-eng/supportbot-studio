@@ -9,6 +9,14 @@ services:
     envVars:
       - key: ANTHROPIC_API_KEY
         sync: false
+      # Auth — Multi-tenant (required)
+      - key: JWT_SECRET_KEY
+        sync: false
+      - key: SUPER_ADMIN_USERNAME
+        sync: false
+      - key: SUPER_ADMIN_PASSWORD
+        sync: false
+      # Notifications (optional)
       - key: TELEGRAM_BOT_TOKEN
         sync: false
       - key: TELEGRAM_CHAT_ID
@@ -24,4 +32,8 @@ services:
       - key: TWILIO_ACCOUNT_SID
         sync: false
       - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_WHATSAPP_FROM
+        sync: false
+      - key: TWILIO_WHATSAPP_TO
         sync: false

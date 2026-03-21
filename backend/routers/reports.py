@@ -4,7 +4,8 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional
 
-from backend.database import get_db, ReportSchedule
+from backend.database import get_db, ReportSchedule, Tenant
+from backend.services.auth import get_current_client
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
 
@@ -26,10 +27,15 @@ class ReportScheduleResponse(ReportScheduleSchema):
 
 
 @router.get("", response_model=ReportScheduleResponse)
-def get_report_schedule(db: Session = Depends(get_db)):
-    schedule = db.query(ReportSchedule).first()
+def get_report_schedule(
+    db: Session = Depends(get_db),
+    tenant: Tenant = Depends(get_current_client),
+):
+    schedule = db.query(ReportSchedule).filter(
+        ReportSchedule.bot_id == tenant.bot_id
+    ).first()
     if not schedule:
-        schedule = ReportSchedule()
+        schedule = ReportSchedule(bot_id=tenant.bot_id)
         db.add(schedule)
         db.commit()
         db.refresh(schedule)
@@ -37,10 +43,16 @@ def get_report_schedule(db: Session = Depends(get_db)):
 
 
 @router.put("", response_model=ReportScheduleResponse)
-def update_report_schedule(data: ReportScheduleSchema, db: Session = Depends(get_db)):
-    schedule = db.query(ReportSchedule).first()
+def update_report_schedule(
+    data: ReportScheduleSchema,
+    db: Session = Depends(get_db),
+    tenant: Tenant = Depends(get_current_client),
+):
+    schedule = db.query(ReportSchedule).filter(
+        ReportSchedule.bot_id == tenant.bot_id
+    ).first()
     if not schedule:
-        schedule = ReportSchedule()
+        schedule = ReportSchedule(bot_id=tenant.bot_id)
         db.add(schedule)
 
     schedule.frequency = data.frequency

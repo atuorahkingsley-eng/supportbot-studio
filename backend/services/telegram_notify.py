@@ -11,6 +11,14 @@ async def send_telegram_message(text: str) -> bool:
         "text": text,
         "parse_mode": "Markdown",
     }
-    async with httpx.AsyncClient() as client:
-        resp = await client.post(url, json=payload, timeout=10)
-        return resp.status_code == 200
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(url, json=payload, timeout=10)
+            return resp.status_code == 200
+    except Exception:
+        return False
+
+
+# Alias used by auto-healer and error middleware
+async def send_telegram_alert(text: str) -> bool:
+    return await send_telegram_message(text)

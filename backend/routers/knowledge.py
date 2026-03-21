@@ -5,8 +5,9 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional, List
 
-from backend.database import get_db, FAQEntry
+from backend.database import get_db, FAQEntry, Tenant
 from backend.config import settings
+from backend.services.auth import get_current_client
 
 router = APIRouter(prefix="/api/knowledge", tags=["knowledge"])
 
@@ -29,13 +30,23 @@ class FAQResponse(BaseModel):
 
 
 @router.get("", response_model=List[FAQResponse])
-def list_faqs(db: Session = Depends(get_db)):
-    return db.query(FAQEntry).order_by(FAQEntry.created_at.desc()).all()
+def list_faqs(
+    db: Session = Depends(get_db),
+    tenant: Tenant = Depends(get_current_client),
+):
+    return db.query(FAQEntry).filter(
+        FAQEntry.bot_id == tenant.bot_id
+    ).order_by(FAQEntry.created_at.desc()).all()
 
 
 @router.post("", response_model=FAQResponse)
-def create_faq(data: FAQCreate, db: Session = Depends(get_db)):
+def create_faq(
+    data: FAQCreate,
+    db: Session = Depends(get_db),
+    tenant: Tenant = Depends(get_current_client),
+):
     faq = FAQEntry(
+        bot_id=tenant.bot_id,
         question=data.question,
         answer=data.answer,
         source="manual",
@@ -48,8 +59,15 @@ def create_faq(data: FAQCreate, db: Session = Depends(get_db)):
 
 
 @router.delete("/{faq_id}")
-def delete_faq(faq_id: int, db: Session = Depends(get_db)):
-    faq = db.query(FAQEntry).filter(FAQEntry.id == faq_id).first()
+def delete_faq(
+    faq_id: int,
+    db: Session = Depends(get_db),
+    tenant: Tenant = Depends(get_current_client),
+):
+    faq = db.query(FAQEntry).filter(
+        FAQEntry.id == faq_id,
+        FAQEntry.bot_id == tenant.bot_id,
+    ).first()
     if not faq:
         raise HTTPException(status_code=404, detail="FAQ not found")
     db.delete(faq)
@@ -62,6 +80,7 @@ async def upload_document(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
+    tenant: Tenant = Depends(get_current_client),
 ):
     from backend.services.doc_processor import process_document
 
@@ -85,6 +104,7 @@ async def upload_document(
         a = pair.get("a", "").strip()
         if q and a:
             faq = FAQEntry(
+                bot_id=tenant.bot_id,
                 question=q,
                 answer=a,
                 source="uploaded_doc",

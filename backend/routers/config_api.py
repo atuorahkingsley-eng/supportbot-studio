@@ -4,7 +4,8 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional
 
-from backend.database import get_db, BotConfig
+from backend.database import get_db, BotConfig, Tenant
+from backend.services.auth import get_current_client
 
 router = APIRouter(prefix="/api/config", tags=["config"])
 
@@ -15,6 +16,7 @@ class BotConfigSchema(BaseModel):
     brand_color: str
     welcome_message: str
     escalation_email: str
+    voice_enabled: bool = True
 
 
 class BotConfigResponse(BotConfigSchema):
@@ -26,11 +28,40 @@ class BotConfigResponse(BotConfigSchema):
         from_attributes = True
 
 
+# ── Public endpoint (no auth — for embed widget) ───────────────────────────────
+
+@router.get("/public/{bot_id}")
+def get_public_config(bot_id: str, db: Session = Depends(get_db)):
+    """Return safe public config for the embed widget. No authentication required."""
+    tenant = db.query(Tenant).filter(
+        Tenant.bot_id == bot_id,
+        Tenant.is_active == True,
+    ).first()
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Bot not found")
+
+    config = db.query(BotConfig).filter(BotConfig.bot_id == bot_id).first()
+
+    return {
+        "bot_id": bot_id,
+        "business_name": config.business_name if config else tenant.company_name,
+        "agent_name": config.agent_name if config else "SupportBot",
+        "brand_color": config.brand_color if config else "#6366F1",
+        "welcome_message": config.welcome_message if config else "Hi! How can I help?",
+        "voice_enabled": config.voice_enabled if config else False,
+    }
+
+
+# ── Authenticated endpoints ────────────────────────────────────────────────────
+
 @router.get("", response_model=BotConfigResponse)
-def get_config(db: Session = Depends(get_db)):
-    config = db.query(BotConfig).first()
+def get_config(
+    db: Session = Depends(get_db),
+    tenant: Tenant = Depends(get_current_client),
+):
+    config = db.query(BotConfig).filter(BotConfig.bot_id == tenant.bot_id).first()
     if not config:
-        config = BotConfig()
+        config = BotConfig(bot_id=tenant.bot_id)
         db.add(config)
         db.commit()
         db.refresh(config)
@@ -38,10 +69,14 @@ def get_config(db: Session = Depends(get_db)):
 
 
 @router.put("", response_model=BotConfigResponse)
-def update_config(data: BotConfigSchema, db: Session = Depends(get_db)):
-    config = db.query(BotConfig).first()
+def update_config(
+    data: BotConfigSchema,
+    db: Session = Depends(get_db),
+    tenant: Tenant = Depends(get_current_client),
+):
+    config = db.query(BotConfig).filter(BotConfig.bot_id == tenant.bot_id).first()
     if not config:
-        config = BotConfig()
+        config = BotConfig(bot_id=tenant.bot_id)
         db.add(config)
 
     config.business_name = data.business_name
@@ -49,6 +84,7 @@ def update_config(data: BotConfigSchema, db: Session = Depends(get_db)):
     config.brand_color = data.brand_color
     config.welcome_message = data.welcome_message
     config.escalation_email = data.escalation_email
+    config.voice_enabled = data.voice_enabled
     config.updated_at = datetime.utcnow()
 
     db.commit()
