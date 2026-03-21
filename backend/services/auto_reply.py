@@ -2,9 +2,10 @@ from typing import Optional
 from backend.utils.text_similarity import similarity
 
 
-def find_auto_reply(user_message: str, faqs: list, threshold: float = 0.85) -> Optional[str]:
+def find_auto_reply(user_message: str, faqs: list, threshold: float = 0.65) -> Optional[str]:
     """
     Compare user_message against all FAQ questions.
+    Uses combined fuzzy + keyword + stem matching.
     If similarity >= threshold, return the FAQ answer.
     Otherwise return None (falls through to Claude).
     """
@@ -19,4 +20,5 @@ def find_auto_reply(user_message: str, faqs: list, threshold: float = 0.85) -> O
 
     if best_score >= threshold:
         return best_answer
+
     return None
