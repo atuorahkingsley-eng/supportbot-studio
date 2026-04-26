@@ -14,7 +14,7 @@ services:
       - key: DATABASE_URL
         value: sqlite:////data/supportbot.db
       - key: APP_URL
-        value: https://your-app.onrender.com
+        value: https://supportbot-studio.onrender.com
       - key: PYTHON_VERSION
         value: 3.11.9
       - key: ANTHROPIC_API_KEY
