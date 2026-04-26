@@ -6,7 +6,17 @@ services:
       pip install -r requirements.txt
       cd frontend && npm install && npm run build && cd ..
     startCommand: uvicorn backend.main:app --host 0.0.0.0 --port $PORT
+    disk:
+      name: supportbot-db
+      mountPath: /data
+      sizeGB: 1
     envVars:
+      - key: DATABASE_URL
+        value: sqlite:////data/supportbot.db
+      - key: APP_URL
+        value: https://your-app.onrender.com
+      - key: PYTHON_VERSION
+        value: 3.11.9
       - key: ANTHROPIC_API_KEY
         sync: false
       # Auth — Multi-tenant (required)
@@ -37,3 +47,5 @@ services:
         sync: false
       - key: TWILIO_WHATSAPP_TO
         sync: false
+      - key: ENV
+        value: production

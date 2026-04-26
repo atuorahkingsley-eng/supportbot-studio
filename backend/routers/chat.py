@@ -1,7 +1,7 @@
 import json
 import uuid
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Request
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional, Any
@@ -14,6 +14,7 @@ from backend.services.auto_reply import find_auto_reply
 from backend.services.ai_chat import get_ai_reply, generate_visitor_summary, build_system_prompt
 from backend.services.auth import get_current_client
 from backend.services.safe_executor import safe_execute
+from backend.services.rate_limit import limiter
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
@@ -53,7 +54,10 @@ class ChatResponse(BaseModel):
 # ── Shared helpers ─────────────────────────────────────────────────────────────
 
 def _get_or_create_visitor(visitor_id: str, bot_id: str, db: Session) -> Visitor:
-    visitor = db.query(Visitor).filter(Visitor.visitor_id == visitor_id).first()
+    visitor = db.query(Visitor).filter(
+        Visitor.visitor_id == visitor_id,
+        Visitor.bot_id == bot_id,
+    ).first()
     if visitor:
         visitor.visit_count += 1
         visitor.last_seen = datetime.utcnow()
@@ -113,9 +117,14 @@ async def _summarize_and_update_visitor(visitor_id: str, conversation_id: int):
         ).order_by(Message.created_at.asc()).all()
         if not msgs:
             return
+        convo = db.query(Conversation).filter(Conversation.id == conversation_id).first()
+        bot_id = convo.bot_id if convo else None
         msg_dicts = [{"role": m.role, "content": m.content} for m in msgs]
         result = await generate_visitor_summary(msg_dicts)
-        visitor = db.query(Visitor).filter(Visitor.visitor_id == visitor_id).first()
+        visitor = db.query(Visitor).filter(
+            Visitor.visitor_id == visitor_id,
+            Visitor.bot_id == bot_id,
+        ).first()
         if visitor:
             existing_tags = []
             try:
@@ -227,6 +236,7 @@ async def _process_chat(
         existing_link = db.query(VisitorConversation).filter(
             VisitorConversation.visitor_id == visitor_id,
             VisitorConversation.conversation_id == convo.id,
+            VisitorConversation.bot_id == bot_id,
         ).first()
         if not existing_link:
             db.add(VisitorConversation(
@@ -334,7 +344,9 @@ async def _process_chat(
 # ── Public endpoint (embed widget — no auth) ──────────────────────────────────
 
 @router.post("/public", response_model=ChatResponse)
+@limiter.limit("20/minute")
 async def public_chat(
+    request: Request,
     data: PublicChatRequest,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),

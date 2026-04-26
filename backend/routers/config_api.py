@@ -1,11 +1,12 @@
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional
 
 from backend.database import get_db, BotConfig, Tenant
 from backend.services.auth import get_current_client
+from backend.services.rate_limit import limiter
 
 router = APIRouter(prefix="/api/config", tags=["config"])
 
@@ -31,7 +32,8 @@ class BotConfigResponse(BotConfigSchema):
 # ── Public endpoint (no auth — for embed widget) ───────────────────────────────
 
 @router.get("/public/{bot_id}")
-def get_public_config(bot_id: str, db: Session = Depends(get_db)):
+@limiter.limit("20/minute")
+def get_public_config(request: Request, bot_id: str, db: Session = Depends(get_db)):
     """Return safe public config for the embed widget. No authentication required."""
     tenant = db.query(Tenant).filter(
         Tenant.bot_id == bot_id,

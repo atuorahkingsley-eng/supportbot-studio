@@ -1,4 +1,6 @@
+import re
 from datetime import datetime
+from urllib.parse import urlparse
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
@@ -9,6 +11,42 @@ from backend.services.webhook_sender import dispatch_webhook
 from backend.services.auth import get_current_client
 
 router = APIRouter(prefix="/api/webhooks", tags=["webhooks"])
+
+
+_WHATSAPP_RE = re.compile(r"^whatsapp:\+\d{6,20}$")
+
+
+def _validate_webhook_url(platform: str, url: str) -> None:
+    """Reject any webhook URL that doesn't target a known integration host (SSRF guard)."""
+    if not url:
+        return
+    p = (platform or "").lower()
+    # WhatsApp uses a phone-number format; the actual outbound host is hardcoded to api.twilio.com.
+    if p == "whatsapp":
+        if not _WHATSAPP_RE.match(url):
+            raise HTTPException(status_code=400, detail="WhatsApp must be 'whatsapp:+<digits>'")
+        return
+
+    parsed = urlparse(url)
+    if parsed.scheme != "https":
+        raise HTTPException(status_code=400, detail="Webhook URL must use https")
+    host = (parsed.hostname or "").lower()
+    path = parsed.path or ""
+
+    if p == "slack":
+        if not (host == "hooks.slack.com" or host.endswith(".slack.com")):
+            raise HTTPException(status_code=400, detail="Slack webhooks must point to *.slack.com")
+        return
+    if p == "discord":
+        if host not in ("discord.com", "discordapp.com") or not path.startswith("/api/webhooks/"):
+            raise HTTPException(status_code=400, detail="Discord webhooks must be discord.com/api/webhooks/...")
+        return
+    if p == "twilio":
+        if host != "api.twilio.com":
+            raise HTTPException(status_code=400, detail="Twilio webhooks must point to api.twilio.com")
+        return
+
+    raise HTTPException(status_code=400, detail=f"Unsupported webhook platform: {platform}")
 
 
 class WebhookCreate(BaseModel):
@@ -52,6 +90,7 @@ def create_webhook(
     db: Session = Depends(get_db),
     tenant: Tenant = Depends(get_current_client),
 ):
+    _validate_webhook_url(data.platform, data.webhook_url)
     wh = WebhookConfig(bot_id=tenant.bot_id, **data.model_dump())
     db.add(wh)
     db.commit()
@@ -72,7 +111,10 @@ def update_webhook(
     ).first()
     if not wh:
         raise HTTPException(status_code=404, detail="Webhook not found")
-    for field, value in data.model_dump(exclude_none=True).items():
+    updates = data.model_dump(exclude_none=True)
+    if "webhook_url" in updates:
+        _validate_webhook_url(updates.get("platform") or wh.platform, updates["webhook_url"])
+    for field, value in updates.items():
         setattr(wh, field, value)
     db.commit()
     db.refresh(wh)

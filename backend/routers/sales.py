@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from pydantic import BaseModel
@@ -7,6 +7,7 @@ from typing import Optional, List
 
 from backend.database import get_db, SalesConfig, Lead, Tenant
 from backend.services.auth import get_current_client
+from backend.services.rate_limit import limiter
 
 router = APIRouter(prefix="/api/sales", tags=["sales"])
 
@@ -124,7 +125,9 @@ def capture_lead(
 
 # Public lead capture (for embed widget)
 @router.post("/leads/capture/public", response_model=LeadResponse)
+@limiter.limit("20/minute")
 def capture_lead_public(
+    request: Request,
     data: PublicLeadCreate,
     db: Session = Depends(get_db),
 ):

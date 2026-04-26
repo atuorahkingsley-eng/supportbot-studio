@@ -1,8 +1,9 @@
 import os
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./supportbot.db")
 from datetime import datetime
 from sqlalchemy import (
     create_engine, Column, Integer, String, Boolean, DateTime, Float,
-    ForeignKey, Text, text, Date,
+    ForeignKey, Text, text, Date, UniqueConstraint,
 )
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
@@ -177,7 +178,7 @@ class Visitor(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     bot_id = Column(String, nullable=True, index=True, default="default")
-    visitor_id = Column(String, unique=True, index=True, nullable=False)
+    visitor_id = Column(String, index=True, nullable=False)
     email = Column(String, nullable=True, index=True)
     first_seen = Column(DateTime, default=datetime.utcnow)
     last_seen = Column(DateTime, default=datetime.utcnow)
@@ -186,13 +187,17 @@ class Visitor(Base):
     tags = Column(Text, default="[]")
     notes = Column(Text, nullable=True)
 
+    __table_args__ = (
+        UniqueConstraint("bot_id", "visitor_id", name="uq_visitor_bot"),
+    )
+
 
 class VisitorConversation(Base):
     __tablename__ = "visitor_conversations"
 
     id = Column(Integer, primary_key=True, index=True)
     bot_id = Column(String, nullable=True, index=True, default="default")
-    visitor_id = Column(String, ForeignKey("visitors.visitor_id"), nullable=False, index=True)
+    visitor_id = Column(String, nullable=False, index=True)
     conversation_id = Column(Integer, ForeignKey("conversations.id"), nullable=False)
 
 

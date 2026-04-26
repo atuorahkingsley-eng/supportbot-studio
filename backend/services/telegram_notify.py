@@ -9,7 +9,6 @@ async def send_telegram_message(text: str) -> bool:
     payload = {
         "chat_id": settings.telegram_chat_id,
         "text": text,
-        "parse_mode": "Markdown",
     }
     try:
         async with httpx.AsyncClient() as client:

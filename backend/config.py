@@ -30,6 +30,10 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./data/supportbot.db"
     upload_dir: str = "./uploads"
 
+    # Public URL of the deployed app — used as the credentialed CORS origin
+    # for admin/auth endpoints. Dev fallback is the local uvicorn host.
+    app_url: str = "http://localhost:8000"
+
     # Multi-tenant auth
     jwt_secret_key: str = "dev-insecure-key-change-this-in-production"
     super_admin_username: str = "admin"
@@ -42,3 +46,20 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+# Boot guard — fail fast if defaults are still set
+DANGEROUS_DEFAULTS = {
+    "JWT_SECRET_KEY": "dev-insecure-key-change-this-in-production",
+    "SUPER_ADMIN_PASSWORD": "changeme123",
+}
+
+ENV = os.getenv("ENV", "production")
+
+if ENV != "dev":
+    for key, default_val in DANGEROUS_DEFAULTS.items():
+        actual = os.getenv(key, "")
+        if not actual or actual == default_val:
+            print(f"❌ STARTUP BLOCKED: {key} is missing or still set to default.")
+            sys.exit(1)
+
+print("✅ Boot guard passed.")

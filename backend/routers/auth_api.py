@@ -13,6 +13,7 @@ from backend.services.auth import (
     hash_password, verify_password, create_token, decode_token,
     get_current_client, get_super_admin,
 )
+from backend.services.rate_limit import limiter
 from backend.config import settings
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -34,7 +35,8 @@ class ClientLoginRequest(BaseModel):
 # ── Super admin login ──────────────────────────────────────────────────────────
 
 @router.post("/super/login")
-def super_login(data: SuperLoginRequest, response: Response, db: Session = Depends(get_db)):
+@limiter.limit("5/15 minutes")
+def super_login(request: Request, data: SuperLoginRequest, response: Response, db: Session = Depends(get_db)):
     admin = db.query(SuperAdmin).filter(SuperAdmin.username == data.username).first()
     if not admin or not verify_password(data.password, admin.password_hash):
         raise HTTPException(status_code=401, detail="Invalid credentials")
@@ -52,7 +54,8 @@ def super_login(data: SuperLoginRequest, response: Response, db: Session = Depen
 # ── Client login ───────────────────────────────────────────────────────────────
 
 @router.post("/login")
-def client_login(data: ClientLoginRequest, response: Response, db: Session = Depends(get_db)):
+@limiter.limit("5/15 minutes")
+def client_login(request: Request, data: ClientLoginRequest, response: Response, db: Session = Depends(get_db)):
     tenant = db.query(Tenant).filter(Tenant.owner_email == data.email).first()
     if not tenant or not verify_password(data.password, tenant.password_hash):
         raise HTTPException(status_code=401, detail="Invalid credentials")

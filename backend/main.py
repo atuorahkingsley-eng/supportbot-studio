@@ -13,6 +13,9 @@ from backend.routers import (
 )
 from backend.routers import auth_api, admin, health
 from backend.middleware.error_handler import ErrorHandlerMiddleware
+from backend.services.rate_limit import limiter, rate_limit_handler
+from backend.config import settings
+from slowapi.errors import RateLimitExceeded
 
 
 def _setup_super_admin():
@@ -184,15 +187,67 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="SupportBot Studio v2 (Multi-Tenant + Auto-Healing)", lifespan=lifespan)
 
+# ── Rate limiting ──────────────────────────────────────────────────────────────
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, rate_limit_handler)
+
 # ── Middleware ─────────────────────────────────────────────────────────────────
-# CORS first so headers are always set; ErrorHandler wraps underneath
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Tiered CORS: public widget endpoints accept any origin (no cookies);
+# admin/auth endpoints lock to APP_URL with credentials. ErrorHandler wraps under.
+APP_URL = settings.app_url
+
+
+class TieredCORSMiddleware:
+    """Path-aware CORS dispatcher.
+
+    Public paths (called from arbitrary client websites embedding the widget)
+    get permissive CORS without credentials. Everything else gets locked to
+    APP_URL with credentials enabled for cookie-based auth.
+
+    Two CORSMiddleware instances are required because browsers reject
+    Access-Control-Allow-Origin: * when credentials are present.
+
+    Args:
+        app: The downstream ASGI application.
+        app_url: Origin permitted for credentialed admin requests.
+    """
+
+    _PUBLIC_EXACT = frozenset({
+        "/api/chat/public",
+        "/api/sales/leads/capture/public",
+    })
+    _PUBLIC_PREFIXES = ("/api/config/public/",)
+
+    def __init__(self, app, app_url: str) -> None:
+        self._public = CORSMiddleware(
+            app,
+            allow_origins=["*"],
+            allow_credentials=False,
+            allow_methods=["GET", "POST", "OPTIONS"],
+            allow_headers=["*"],
+        )
+        self._admin = CORSMiddleware(
+            app,
+            allow_origins=[app_url],
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
+
+    @classmethod
+    def _is_public(cls, path: str) -> bool:
+        if path in cls._PUBLIC_EXACT:
+            return True
+        return any(path.startswith(p) for p in cls._PUBLIC_PREFIXES)
+
+    async def __call__(self, scope, receive, send) -> None:
+        if scope.get("type") == "http" and self._is_public(scope.get("path", "")):
+            await self._public(scope, receive, send)
+        else:
+            await self._admin(scope, receive, send)
+
+
+app.add_middleware(TieredCORSMiddleware, app_url=APP_URL)
 app.add_middleware(ErrorHandlerMiddleware)
 
 # ── API routers ────────────────────────────────────────────────────────────────

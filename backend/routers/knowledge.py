@@ -75,6 +75,10 @@ def delete_faq(
     return {"ok": True}
 
 
+MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10 MB
+_UPLOAD_CHUNK = 1024 * 1024          # 1 MB
+
+
 @router.post("/upload")
 async def upload_document(
     background_tasks: BackgroundTasks,
@@ -84,17 +88,39 @@ async def upload_document(
 ):
     from backend.services.doc_processor import process_document
 
+    # Sanitize: strip any path components from client-supplied filename
+    safe_filename = os.path.basename(file.filename or "")
+    if not safe_filename:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+
     allowed = {".pdf", ".docx", ".csv", ".txt"}
-    ext = os.path.splitext(file.filename)[1].lower()
+    ext = os.path.splitext(safe_filename)[1].lower()
     if ext not in allowed:
         raise HTTPException(status_code=400, detail=f"Unsupported file type: {ext}")
 
     os.makedirs(settings.upload_dir, exist_ok=True)
-    save_path = os.path.join(settings.upload_dir, file.filename)
+    # Prefix with bot_id to prevent cross-tenant collision
+    save_path = os.path.join(settings.upload_dir, f"{tenant.bot_id}_{safe_filename}")
 
-    content = await file.read()
+    # Stream-write with size cap so a 500 MB upload can't OOM the dyno
+    total = 0
     with open(save_path, "wb") as f:
-        f.write(content)
+        while True:
+            chunk = await file.read(_UPLOAD_CHUNK)
+            if not chunk:
+                break
+            total += len(chunk)
+            if total > MAX_UPLOAD_SIZE:
+                f.close()
+                try:
+                    os.remove(save_path)
+                except OSError:
+                    pass
+                raise HTTPException(
+                    status_code=413,
+                    detail=f"File too large. Maximum size is {MAX_UPLOAD_SIZE // (1024 * 1024)} MB.",
+                )
+            f.write(chunk)
 
     pairs = await process_document(save_path, ext)
 
@@ -108,11 +134,11 @@ async def upload_document(
                 question=q,
                 answer=a,
                 source="uploaded_doc",
-                source_filename=file.filename,
+                source_filename=safe_filename,
                 embedding_text=f"{q} {a}",
             )
             db.add(faq)
             added += 1
 
     db.commit()
-    return {"ok": True, "extracted": len(pairs), "added": added, "filename": file.filename, "pairs": pairs}
+    return {"ok": True, "extracted": len(pairs), "added": added, "filename": safe_filename, "pairs": pairs}

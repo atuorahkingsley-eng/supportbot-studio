@@ -14,6 +14,7 @@ build/
 # Data & uploads
 data/
 uploads/
+KAY_SKILL.md
 
 # Frontend
 frontend/node_modules/
