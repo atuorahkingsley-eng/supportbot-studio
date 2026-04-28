@@ -60,7 +60,7 @@ if ENV != "dev":
     for key, default_val in DANGEROUS_DEFAULTS.items():
         actual = os.getenv(key, "")
         if not actual or actual == default_val:
-            print(f"❌ STARTUP BLOCKED: {key} is missing or still set to default.")
+            print(f"STARTUP BLOCKED: {key} is missing or still set to default.", file=sys.stderr, flush=True)
             sys.exit(1)
 
-print("✅ Boot guard passed.")
+print("Boot guard passed.", flush=True)

@@ -18,6 +18,10 @@ class BotConfigSchema(BaseModel):
     welcome_message: str
     escalation_email: str
     voice_enabled: bool = True
+    # Optional so older clients that don't send the field don't wipe the
+    # stored value on save. The widget falls back to its own default if
+    # this is empty / null.
+    greeting_message: Optional[str] = None
 
 
 class BotConfigResponse(BotConfigSchema):
@@ -51,6 +55,8 @@ def get_public_config(request: Request, bot_id: str, db: Session = Depends(get_d
         "brand_color": config.brand_color if config else "#6366F1",
         "welcome_message": config.welcome_message if config else "Hi! How can I help?",
         "voice_enabled": config.voice_enabled if config else False,
+        # Empty / missing → widget falls back to its own default.
+        "greeting_message": (config.greeting_message if config else None) or "Hi! Need help? 👋",
     }
 
 
@@ -87,6 +93,10 @@ def update_config(
     config.welcome_message = data.welcome_message
     config.escalation_email = data.escalation_email
     config.voice_enabled = data.voice_enabled
+    # Only overwrite if the client actually sent a value — None means
+    # the field wasn't in the payload at all.
+    if data.greeting_message is not None:
+        config.greeting_message = data.greeting_message
     config.updated_at = datetime.utcnow()
 
     db.commit()

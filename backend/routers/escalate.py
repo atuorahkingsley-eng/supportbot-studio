@@ -118,7 +118,14 @@ async def _do_escalate(session_id: str, customer_email: Optional[str], bot_id: s
                 text = f"**SupportBot Escalation**\nCustomer: {email}\nMessages: {len(messages)}\n\n{transcript}"
             else:
                 text = summary
-            ok = await dispatch_webhook(wh.platform, wh.webhook_url, text)
+            ok = await dispatch_webhook(
+                wh.platform,
+                wh.webhook_url,
+                text,
+                secret=wh.secret,
+                events=wh.events,
+                event="escalation",
+            )
             results[f"webhook_{wh.platform}_{wh.id}"] = ok
         except Exception as e:
             _log_notification_error(db, bot_id, f"webhook_{wh.platform}", e)

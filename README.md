@@ -165,11 +165,13 @@ All endpoints prefixed `/api`. Auth is cookie-based — log in once, the cookie 
 ### Webhooks — `/api/webhooks` (tenant)
 | Method | Path | What it does |
 |---|---|---|
-| GET / POST | `/` | List / add webhook (Slack, Discord, WhatsApp) |
+| GET / POST | `/` | List / add webhook (Slack, Discord, WhatsApp, custom_https) |
 | PUT / DELETE | `/{id}` | Update / remove |
 | POST | `/{id}/test` | Send a test payload |
 
 URLs are validated against a per-platform allowlist (https only) to prevent SSRF.
+
+See [docs/webhooks.md](docs/webhooks.md) for webhook receiver integration.
 
 ### Reports — `/api/reports` (tenant)
 | Method | Path | What it does |

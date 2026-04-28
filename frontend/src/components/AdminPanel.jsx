@@ -140,6 +140,18 @@ export default function AdminPanel({ config, setConfig }) {
             style={{ resize: 'vertical' }}
           />
         </div>
+        <div style={{ marginBottom: 16 }}>
+          <label className="label">Greeting Message</label>
+          <input
+            className="input"
+            value={form.greeting_message || ''}
+            onChange={e => setForm(prev => ({ ...prev, greeting_message: e.target.value }))}
+            placeholder="Hi! Need help?"
+          />
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
+            Shown as a tooltip above the chat bubble 5 seconds after your widget loads.
+          </div>
+        </div>
         {/* Phase 4: Voice toggle */}
         <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 12 }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>

@@ -95,6 +95,9 @@ class BotConfig(Base):
     welcome_message = Column(String, default="Hi! How can I help you today?")
     escalation_email = Column(String, default="")
     voice_enabled = Column(Boolean, default=True)
+    # Auto-greeting bubble shown by the embed widget after a short delay.
+    # Empty/null falls back to a hardcoded default in widget.js.
+    greeting_message = Column(String, default="Hi! Need help? 👋")
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -155,6 +158,13 @@ class WebhookConfig(Base):
     enabled = Column(Boolean, default=True)
     notify_on = Column(String, default="escalation")
     last_test_ok = Column(Boolean, nullable=True)
+    # HMAC signing secret. Required when platform == "custom_https";
+    # ignored for managed platforms (Slack/Discord/Twilio/WhatsApp).
+    secret = Column(String, nullable=True)
+    # JSON-encoded list of event types this webhook subscribes to,
+    # e.g. '["escalation","lead.captured"]'. NULL = receive all events
+    # matching notify_on (legacy behaviour).
+    events = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
@@ -295,6 +305,10 @@ def _migrate_columns():
         ("messages", "detected_language TEXT"),
         ("messages", "input_method TEXT DEFAULT 'text'"),
         ("bot_config", "voice_enabled INTEGER DEFAULT 1"),
+        # ASCII default in the SQL migration — emoji default is set
+        # via SQLAlchemy on new rows, and the widget falls back to the
+        # full string with emoji client-side anyway.
+        ("bot_config", "greeting_message TEXT DEFAULT 'Hi! Need help?'"),
         # Phase MT: bot_id multi-tenant columns
         ("bot_config", "bot_id TEXT DEFAULT 'default'"),
         ("faq_entries", "bot_id TEXT DEFAULT 'default'"),

@@ -41,9 +41,26 @@
   badge.style.cssText =
     'position:absolute;top:-4px;right:-4px;width:20px;height:20px;border-radius:50%;background:#EF4444;color:white;font-size:11px;font-weight:700;display:none;align-items:center;justify-content:center;';
 
+  // Auto-greeting state (declared before bubble.onclick so the toggle can clear them)
+  var GREETING_DELAY_MS = 5000;
+  var GREETING_DISMISS_KEY = 'supportbot_greeting_dismissed_' + botId;
+  var greetingTimer = null;
+  var tooltip = null;
+
+  function removeTooltip() {
+    if (tooltip && tooltip.parentNode) tooltip.parentNode.removeChild(tooltip);
+    tooltip = null;
+  }
+
+  function cancelGreeting() {
+    if (greetingTimer) { clearTimeout(greetingTimer); greetingTimer = null; }
+    removeTooltip();
+  }
+
   // Toggle chat
   var isOpen = false;
   bubble.onclick = function () {
+    cancelGreeting();
     isOpen = !isOpen;
     frame.style.display = isOpen ? 'block' : 'none';
     badge.style.display = 'none';
@@ -55,13 +72,71 @@
   bubble.onmouseover = function () { bubble.style.transform = 'scale(1.08)'; };
   bubble.onmouseout = function () { bubble.style.transform = 'scale(1)'; };
 
-  // Fetch brand color
+  function showGreeting(message) {
+    // Skip if dismissed earlier this session, already open, or already showing.
+    try { if (sessionStorage.getItem(GREETING_DISMISS_KEY) === '1') return; } catch (e) {}
+    if (isOpen || tooltip) return;
+
+    tooltip = document.createElement('div');
+    tooltip.id = 'supportbot-greeting';
+    tooltip.style.cssText =
+      'position:absolute;bottom:74px;' + (position === 'left' ? 'left:0' : 'right:0') + ';' +
+      'background:white;color:#1F2937;padding:10px 32px 10px 14px;border-radius:14px;' +
+      'box-shadow:0 4px 20px rgba(0,0,0,0.15);' +
+      'font-size:14px;font-weight:500;line-height:1.4;' +
+      'max-width:200px;cursor:pointer;' +
+      'white-space:normal;word-wrap:break-word;overflow-wrap:break-word;' +
+      'animation:supportbot-fade-in 0.3s ease-out;';
+
+    // Message text — kept in its own span so the emoji span next to it
+    // renders independently. JS string literals don't go through the
+    // SQL migration / server encoding pipeline that broke the inline emoji.
+    var msgSpan = document.createElement('span');
+    msgSpan.textContent = message;
+    tooltip.appendChild(msgSpan);
+
+    var wave = document.createElement('span');
+    wave.textContent = '👋';
+    wave.setAttribute('aria-hidden', 'true');
+    wave.style.cssText = 'display:inline-block;margin-left:6px;font-size:16px;';
+    tooltip.appendChild(wave);
+
+    var close = document.createElement('span');
+    close.textContent = '×';
+    close.setAttribute('aria-label', 'Dismiss');
+    close.style.cssText =
+      'position:absolute;top:2px;right:8px;font-size:18px;line-height:1;' +
+      'color:#9CA3AF;cursor:pointer;font-weight:600;padding:2px 4px;';
+    close.onclick = function (e) {
+      e.stopPropagation();
+      try { sessionStorage.setItem(GREETING_DISMISS_KEY, '1'); } catch (e2) {}
+      removeTooltip();
+    };
+    tooltip.appendChild(close);
+
+    // Click anywhere else on the tooltip → open chat.
+    tooltip.onclick = function () {
+      removeTooltip();
+      bubble.click();
+    };
+
+    bubbleWrapper.appendChild(tooltip);
+  }
+
+  // Fetch brand color + greeting message
   fetch(baseUrl + '/api/config/public/' + botId)
     .then(function (r) { return r.json(); })
     .then(function (config) {
       bubble.style.background = config.brand_color || '#6366F1';
+      var greeting = (config && config.greeting_message) || 'Hi! Need help?';
+      try { if (sessionStorage.getItem(GREETING_DISMISS_KEY) === '1') return; } catch (e) {}
+      greetingTimer = setTimeout(function () { showGreeting(greeting); }, GREETING_DELAY_MS);
     })
-    .catch(function () { /* keep default color */ });
+    .catch(function () {
+      // Even on fetch failure, show a default greeting so engagement still triggers.
+      try { if (sessionStorage.getItem(GREETING_DISMISS_KEY) === '1') return; } catch (e) {}
+      greetingTimer = setTimeout(function () { showGreeting('Hi! Need help?'); }, GREETING_DELAY_MS);
+    });
 
   // Listen for messages from iframe
   window.addEventListener('message', function (event) {
@@ -92,5 +167,15 @@
   wrapper.appendChild(bubbleWrapper);
 
   container.appendChild(wrapper);
+
+  // Animation keyframes for the greeting tooltip — injected once per page.
+  if (!document.getElementById('supportbot-styles')) {
+    var styleEl = document.createElement('style');
+    styleEl.id = 'supportbot-styles';
+    styleEl.textContent =
+      '@keyframes supportbot-fade-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }';
+    document.head.appendChild(styleEl);
+  }
+
   document.body.appendChild(container);
 })();
