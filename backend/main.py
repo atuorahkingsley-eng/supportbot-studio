@@ -118,32 +118,49 @@ def _log_daily_usage():
         db.close()
 
 
-def _retry_pending_escalations():
-    """APScheduler job: retry escalations that failed all notification channels."""
-    import asyncio
+async def _retry_pending_escalations():
+    """APScheduler job: retry escalations that failed all notification channels.
+
+    Native async — AsyncIOScheduler runs this directly on the main event loop
+    (no asyncio.run, no thread hop). Each pending escalation gets its own DB
+    session so a mid-transaction failure can't corrupt the next iteration.
+    """
     from datetime import datetime, timedelta
     from backend.database import PendingEscalation
+    from backend.routers.escalate import _do_escalate
 
-    db = SessionLocal()
+    # Read the pending list with a short-lived session, then close.
+    read_db = SessionLocal()
     try:
         now = datetime.utcnow()
-        pending = db.query(PendingEscalation).filter(
+        pending = read_db.query(PendingEscalation).filter(
             PendingEscalation.retry_after <= now,
             PendingEscalation.retry_count < 3,
         ).all()
+        # Snapshot the fields we need before the session closes —
+        # detached ORM objects can't be safely mutated downstream.
+        items = [(p.id, p.session_id, p.customer_email, p.bot_id) for p in pending]
+    finally:
+        read_db.close()
 
-        for p in pending:
-            try:
-                from backend.routers.escalate import _do_escalate
-                asyncio.run(_do_escalate(p.session_id, p.customer_email, p.bot_id, db))
+    # Process each in its own session — failures stay isolated.
+    for pid, session_id, customer_email, bot_id in items:
+        db = SessionLocal()
+        try:
+            await _do_escalate(session_id, customer_email, bot_id, db)
+            p = db.query(PendingEscalation).filter(PendingEscalation.id == pid).first()
+            if p:
                 db.delete(p)
                 db.commit()
-            except Exception:
+        except Exception:
+            db.rollback()
+            p = db.query(PendingEscalation).filter(PendingEscalation.id == pid).first()
+            if p:
                 p.retry_count += 1
-                p.retry_after = now + timedelta(minutes=15)
+                p.retry_after = datetime.utcnow() + timedelta(minutes=15)
                 db.commit()
-    finally:
-        db.close()
+        finally:
+            db.close()
 
 
 @asynccontextmanager

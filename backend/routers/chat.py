@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from typing import Optional, Any
 
 from backend.database import (
-    get_db, Conversation, Message, FAQEntry, BotConfig,
+    get_db, SessionLocal, Conversation, Message, FAQEntry, BotConfig,
     Visitor, VisitorConversation, SalesConfig, Tenant,
 )
 from backend.services.auto_reply import find_auto_reply
@@ -49,6 +49,16 @@ class ChatResponse(BaseModel):
     is_returning: bool = False
     detected_language: Optional[str] = None
     sales_action: Optional[Any] = None
+
+
+class RateRequest(BaseModel):
+    """Body for /api/chat/rate. bot_id is required so we can pin the
+    conversation lookup to the right tenant — preventing a stranger with a
+    leaked session_id from triggering a Claude summary call on someone
+    else's visitor record."""
+    bot_id: str
+    session_id: str
+    rating: int
 
 
 # ── Shared helpers ─────────────────────────────────────────────────────────────
@@ -110,7 +120,7 @@ def _build_sales_action(sales_meta: dict, sales_config) -> Optional[dict]:
 
 
 async def _summarize_and_update_visitor(visitor_id: str, conversation_id: int):
-    db = next(get_db())
+    db = SessionLocal()
     try:
         msgs = db.query(Message).filter(
             Message.conversation_id == conversation_id
@@ -416,24 +426,31 @@ async def chat(
 # ── Rate conversation (public — called by embed widget and admin demo) ─────────
 
 @router.post("/rate")
+@limiter.limit("10/minute")
 async def rate_conversation(
-    session_id: str,
-    rating: int,
+    request: Request,
+    data: RateRequest,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ):
-    """Public endpoint — no auth needed since session_id acts as token."""
-    if not 1 <= rating <= 4:
+    """Public endpoint — no auth required, but the (session_id, bot_id) pair
+    is verified before any write. Rate-limited because the success path
+    queues a Claude summary call (paid API)."""
+    if not 1 <= data.rating <= 4:
         raise HTTPException(status_code=400, detail="Rating must be 1-4")
-    convo = db.query(Conversation).filter(Conversation.session_id == session_id).first()
+    convo = db.query(Conversation).filter(
+        Conversation.session_id == data.session_id,
+        Conversation.bot_id == data.bot_id,
+    ).first()
     if not convo:
         raise HTTPException(status_code=404, detail="Conversation not found")
-    convo.rating = rating
+    convo.rating = data.rating
     convo.ended_at = datetime.utcnow()
     db.commit()
 
     link = db.query(VisitorConversation).filter(
-        VisitorConversation.conversation_id == convo.id
+        VisitorConversation.conversation_id == convo.id,
+        VisitorConversation.bot_id == data.bot_id,
     ).first()
     if link:
         background_tasks.add_task(_summarize_and_update_visitor, link.visitor_id, convo.id)

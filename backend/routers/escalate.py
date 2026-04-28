@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional
@@ -12,6 +12,7 @@ from backend.services.telegram_notify import send_telegram_message
 from backend.services.email_notify import send_emailjs
 from backend.services.webhook_sender import dispatch_webhook
 from backend.services.auth import get_current_client
+from backend.services.rate_limit import limiter
 
 router = APIRouter(prefix="/api/escalate", tags=["escalate"])
 
@@ -49,7 +50,13 @@ async def _do_escalate(session_id: str, customer_email: Optional[str], bot_id: s
     Phase 7: Each notification channel wrapped individually — partial success is OK.
     If ALL channels fail, store a PendingEscalation for scheduler retry.
     """
-    convo = db.query(Conversation).filter(Conversation.session_id == session_id).first()
+    # Tenant isolation: a session_id alone is NOT a sufficient lookup key —
+    # an attacker could pass another tenant's UUID and route their transcript
+    # to our notification channels. Always pin to (session_id, bot_id).
+    convo = db.query(Conversation).filter(
+        Conversation.session_id == session_id,
+        Conversation.bot_id == bot_id,
+    ).first()
     if not convo:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
@@ -142,11 +149,18 @@ async def _do_escalate(session_id: str, customer_email: Optional[str], bot_id: s
 # ── Public endpoint (embed widget) ────────────────────────────────────────────
 
 @router.post("/public")
+@limiter.limit("5/minute")
 async def public_escalate(
+    request: Request,
     data: PublicEscalateRequest,
     db: Session = Depends(get_db),
 ):
-    """Escalation endpoint for the embeddable widget (no auth required)."""
+    """Escalation endpoint for the embeddable widget (no auth required).
+
+    Rate-limited tighter than chat (5/min vs 20/min) — a single escalation
+    fans out to Telegram + email + every configured webhook. Easy abuse
+    vector if left wide open.
+    """
     tenant = db.query(Tenant).filter(
         Tenant.bot_id == data.bot_id,
         Tenant.is_active == True,

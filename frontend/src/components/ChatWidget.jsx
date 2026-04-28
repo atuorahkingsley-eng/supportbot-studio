@@ -123,7 +123,7 @@ const LANG_NAMES = {
   sw: '🌍 SW', yo: '🌍 YO', pcm: '🇳🇬 PCM', ha: '🇳🇬 HA', ig: '🇳🇬 IG',
 }
 
-export default function ChatWidget({ config }) {
+export default function ChatWidget({ config, botId }) {
   const addToast = useContext(ToastContext)
 
   // Core state
@@ -352,9 +352,14 @@ export default function ChatWidget({ config }) {
 
   // ── Rating ────────────────────────────────────────────────────────────────
   const rateConversation = async (rating) => {
-    if (!sessionId) return
+    if (!sessionId || !botId) return
     try {
-      await fetch(`/api/chat/rate?session_id=${sessionId}&rating=${rating}`, { method: 'POST' })
+      await fetch('/api/chat/rate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ bot_id: botId, session_id: sessionId, rating }),
+      })
       setRated(true)
       setShowRating(false)
       addToast('Thanks for your feedback!', 'success')

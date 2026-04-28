@@ -131,7 +131,7 @@ function ClientAdminLayout() {
 
       <main style={{ padding: '24px', maxWidth: 1100, margin: '0 auto' }}>
         {activeTab === 'configure' && <AdminPanel config={config} setConfig={setConfig} />}
-        {activeTab === 'chat' && <ChatWidget config={config} />}
+        {activeTab === 'chat' && <ChatWidget config={config} botId={user.bot_id} />}
         {activeTab === 'analytics' && <AnalyticsDashboard />}
         {activeTab === 'sales' && <SalesPanel />}
         {activeTab === 'integrations' && (

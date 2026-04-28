@@ -2,6 +2,7 @@
 Auth endpoints: login, logout, me.
 Two auth systems: super admin (/api/auth/super/login) and client (/api/auth/login).
 """
+import os
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Response, Request
 from sqlalchemy.orm import Session
@@ -18,7 +19,10 @@ from backend.config import settings
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
-COOKIE_SECURE = False   # Set True in production (HTTPS)
+# Cookie Secure flag: True in production (HTTPS), False only when ENV=dev
+# so localhost http still accepts the cookie. Mirrors the boot-guard convention
+# in backend/config.py — same env var, same semantics.
+COOKIE_SECURE = os.getenv("ENV", "production") != "dev"
 COOKIE_SAMESITE = "lax"
 
 
