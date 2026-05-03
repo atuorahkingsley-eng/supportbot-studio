@@ -98,6 +98,11 @@ class BotConfig(Base):
     # Auto-greeting bubble shown by the embed widget after a short delay.
     # Empty/null falls back to a hardcoded default in widget.js.
     greeting_message = Column(String, default="Hi! Need help? 👋")
+    # Per-tenant Telegram chat target for escalations. Accepts numeric chat_id
+    # OR @username (the @username form requires the user to have messaged the
+    # bot first — Telegram's restriction, not ours). Sent IN ADDITION TO the
+    # platform-wide TELEGRAM_CHAT_ID, never instead of it.
+    telegram_handle = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -242,6 +247,43 @@ class Lead(Base):
     conversation_id = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     followed_up = Column(Boolean, default=False)
+
+
+# ── Brand Voice DNA ───────────────────────────────────────────────────────────
+
+class BrandVoice(Base):
+    """Per-tenant brand voice extracted from sample copy by Claude.
+
+    One row per tenant — enforced by the unique constraint on bot_id.
+    All extraction fields are nullable: a partial JSON response from Claude
+    (missing one of the four facets) is still useful, we don't want the
+    whole analyse call to fail because Claude omitted "vocabulary".
+    """
+    __tablename__ = "brand_voices"
+
+    id = Column(Integer, primary_key=True, index=True)
+    bot_id = Column(String, nullable=False, index=True)
+
+    # Extracted facets — each a short string Claude produces from the samples.
+    tone = Column(String, nullable=True)
+    vocabulary = Column(Text, nullable=True)
+    personality_traits = Column(Text, nullable=True)  # JSON-encoded list
+    avoid = Column(Text, nullable=True)
+
+    # Original samples kept for re-analysis / audit. Truncated server-side
+    # before save (see analyzer service) to keep row size reasonable.
+    raw_samples = Column(Text, nullable=True)
+
+    # Toggle injection without losing the extraction. Off by default — tenant
+    # explicitly opts in after reviewing the extracted profile.
+    is_active = Column(Boolean, default=False, nullable=False)
+
+    generated_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("bot_id", name="uq_brand_voice_bot"),
+    )
 
 
 # ── Auto-Healing ──────────────────────────────────────────────────────────────

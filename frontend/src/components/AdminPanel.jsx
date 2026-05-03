@@ -12,10 +12,34 @@ export default function AdminPanel({ config, setConfig }) {
   const [dragOver, setDragOver] = useState(false)
   const fileRef = useRef()
 
+  // ── Brand Voice DNA ─────────────────────────────────────────────────────
+  const [voiceSamples, setVoiceSamples] = useState('')
+  const [voiceProfile, setVoiceProfile] = useState(null)   // null when no profile saved
+  const [analyzingVoice, setAnalyzingVoice] = useState(false)
+
+  // ── Change Password ─────────────────────────────────────────────────────
+  // Server enforces an 8-char min on new_password. We mirror that here so
+  // the user gets immediate feedback instead of a round-trip to find out.
+  const [pwCurrent, setPwCurrent] = useState('')
+  const [pwNew, setPwNew] = useState('')
+  const [pwConfirm, setPwConfirm] = useState('')
+  const [changingPw, setChangingPw] = useState(false)
+
   useEffect(() => { setForm(config) }, [config])
 
   useEffect(() => {
     fetch('/api/knowledge').then(r => r.json()).then(setFaqs).catch(() => {})
+  }, [])
+
+  // Fetch existing brand voice on mount — 404 is the empty state, not an error.
+  useEffect(() => {
+    fetch('/api/brand-voice').then(r => {
+      if (r.status === 404) return null
+      if (!r.ok) throw new Error('fetch failed')
+      return r.json()
+    }).then(data => {
+      if (data) setVoiceProfile(data)
+    }).catch(() => {})
   }, [])
 
   const saveConfig = async () => {
@@ -58,6 +82,100 @@ export default function AdminPanel({ config, setConfig }) {
       addToast('FAQ removed', 'info')
     } catch {
       addToast('Failed to delete FAQ', 'error')
+    }
+  }
+
+  // ── Brand Voice DNA handlers ───────────────────────────────────────────
+  const analyzeBrandVoice = async () => {
+    if (voiceSamples.trim().length < 20) {
+      addToast('Paste at least 20 characters of your brand copy first', 'error')
+      return
+    }
+    setAnalyzingVoice(true)
+    try {
+      const r = await fetch('/api/brand-voice/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ samples: voiceSamples }),
+      })
+      if (r.status === 429) {
+        addToast('Rate limit hit — only 5 analyses per hour. Try again later.', 'error')
+        return
+      }
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}))
+        throw new Error(err.detail || 'Analysis failed')
+      }
+      const data = await r.json()
+      setVoiceProfile(data)
+      addToast('Brand voice extracted! Review it, then toggle Active.', 'success')
+    } catch (e) {
+      addToast(e.message || 'Failed to analyze brand voice', 'error')
+    } finally {
+      setAnalyzingVoice(false)
+    }
+  }
+
+  const toggleBrandVoiceActive = async () => {
+    if (!voiceProfile) return
+    try {
+      const r = await fetch('/api/brand-voice', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_active: !voiceProfile.is_active }),
+      })
+      if (!r.ok) throw new Error('toggle failed')
+      const data = await r.json()
+      setVoiceProfile(data)
+      addToast(data.is_active ? 'Brand voice activated' : 'Brand voice paused', 'success')
+    } catch {
+      addToast('Failed to toggle brand voice', 'error')
+    }
+  }
+
+  const deleteBrandVoice = async () => {
+    if (!voiceProfile) return
+    if (!confirm('Delete the saved brand voice profile? You can always re-analyze later.')) return
+    try {
+      const r = await fetch('/api/brand-voice', { method: 'DELETE' })
+      if (!r.ok) throw new Error('delete failed')
+      setVoiceProfile(null)
+      setVoiceSamples('')
+      addToast('Brand voice profile removed', 'info')
+    } catch {
+      addToast('Failed to delete brand voice', 'error')
+    }
+  }
+
+  // ── Change Password handler ────────────────────────────────────────────
+  const changePassword = async () => {
+    if (pwNew.length < 8) {
+      addToast('New password must be at least 8 characters', 'error')
+      return
+    }
+    if (pwNew !== pwConfirm) {
+      addToast('New passwords do not match', 'error')
+      return
+    }
+    setChangingPw(true)
+    try {
+      const r = await fetch('/api/auth/change-password', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ current_password: pwCurrent, new_password: pwNew }),
+      })
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}))
+        throw new Error(err.detail || 'Password change failed')
+      }
+      setPwCurrent('')
+      setPwNew('')
+      setPwConfirm('')
+      addToast('Password updated', 'success')
+    } catch (e) {
+      addToast(e.message || 'Failed to change password', 'error')
+    } finally {
+      setChangingPw(false)
     }
   }
 
@@ -181,7 +299,113 @@ export default function AdminPanel({ config, setConfig }) {
             Customers can speak their messages using the browser mic
           </span>
         </div>
+        {/* Per-tenant Telegram chat target. Optional. Sent IN ADDITION TO
+            the platform-wide chat — never instead of it. */}
+        <div style={{ marginBottom: 16 }}>
+          <label className="label">Telegram Handle (optional)</label>
+          <input
+            className="input"
+            value={form.telegram_handle || ''}
+            onChange={e => setForm(prev => ({ ...prev, telegram_handle: e.target.value }))}
+            placeholder="@your_handle  or  123456789"
+          />
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
+            Get an extra Telegram ping for every escalation. Numeric chat ID works directly;
+            <code> @username</code> only works after you've sent a message to the bot first.
+            Leave blank to disable.
+          </div>
+        </div>
         <button className="btn btn-primary" onClick={saveConfig}>Save Configuration</button>
+      </div>
+
+      {/* Brand Voice DNA */}
+      <div className="card">
+        <h2 className="section-title">Brand Voice DNA</h2>
+        <p style={{ color: 'var(--text-secondary)', marginBottom: 16, fontSize: 13 }}>
+          Paste samples of your existing copy — marketing pages, support emails, blog posts.
+          Claude extracts your brand's tone, vocabulary, and personality, then writes replies in that voice.
+        </p>
+
+        <div style={{ marginBottom: 12 }}>
+          <label className="label">Brand copy samples</label>
+          <textarea
+            className="input"
+            rows={6}
+            value={voiceSamples}
+            onChange={e => setVoiceSamples(e.target.value)}
+            placeholder="Paste a few paragraphs from your homepage, support docs, or recent emails..."
+            style={{ resize: 'vertical', fontFamily: 'inherit' }}
+          />
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
+            {voiceSamples.length} characters · 8000 max · limit 5 analyses per hour
+          </div>
+        </div>
+
+        <button
+          className="btn btn-primary"
+          onClick={analyzeBrandVoice}
+          disabled={analyzingVoice || voiceSamples.trim().length < 20}
+        >
+          {analyzingVoice ? 'Analyzing with Claude...' : (voiceProfile ? 'Re-analyze' : 'Analyze Brand Voice')}
+        </button>
+
+        {voiceProfile && (
+          <div style={{
+            marginTop: 20,
+            padding: 16,
+            background: 'var(--body-bg)',
+            border: '1px solid var(--border)',
+            borderRadius: 8,
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <strong>Extracted profile</strong>
+              <span className={`badge ${voiceProfile.is_active ? 'badge-green' : 'badge-blue'}`}>
+                {voiceProfile.is_active ? 'Active' : 'Inactive'}
+              </span>
+            </div>
+
+            {voiceProfile.tone && (
+              <div style={{ marginBottom: 10 }}>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.5 }}>Tone</div>
+                <div style={{ fontSize: 14 }}>{voiceProfile.tone}</div>
+              </div>
+            )}
+
+            {voiceProfile.vocabulary && (
+              <div style={{ marginBottom: 10 }}>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.5 }}>Vocabulary</div>
+                <div style={{ fontSize: 14 }}>{voiceProfile.vocabulary}</div>
+              </div>
+            )}
+
+            {voiceProfile.personality_traits && voiceProfile.personality_traits.length > 0 && (
+              <div style={{ marginBottom: 10 }}>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.5 }}>Personality</div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
+                  {voiceProfile.personality_traits.map((t, i) => (
+                    <span key={i} className="badge badge-blue">{t}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {voiceProfile.avoid && (
+              <div style={{ marginBottom: 10 }}>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.5 }}>Avoid</div>
+                <div style={{ fontSize: 14 }}>{voiceProfile.avoid}</div>
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: 8, marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
+              <button className="btn btn-secondary" onClick={toggleBrandVoiceActive}>
+                {voiceProfile.is_active ? 'Pause' : 'Activate'}
+              </button>
+              <button className="btn btn-danger" onClick={deleteBrandVoice}>
+                Delete profile
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Document Upload */}
@@ -307,6 +531,52 @@ export default function AdminPanel({ config, setConfig }) {
             ))}
           </div>
         )}
+      </div>
+
+      {/* Change Password — tenant self-service.
+          Server enforces 8-char min; we mirror that here. */}
+      <div className="card">
+        <h2 className="section-title">Change Password</h2>
+        <p style={{ color: 'var(--text-secondary)', marginBottom: 16, fontSize: 13 }}>
+          Update the password you use to sign in to this dashboard. Minimum 8 characters.
+        </p>
+        <div style={{ marginBottom: 12 }}>
+          <label className="label">Current password</label>
+          <input
+            className="input"
+            type="password"
+            value={pwCurrent}
+            onChange={e => setPwCurrent(e.target.value)}
+            autoComplete="current-password"
+          />
+        </div>
+        <div style={{ marginBottom: 12 }}>
+          <label className="label">New password</label>
+          <input
+            className="input"
+            type="password"
+            value={pwNew}
+            onChange={e => setPwNew(e.target.value)}
+            autoComplete="new-password"
+          />
+        </div>
+        <div style={{ marginBottom: 16 }}>
+          <label className="label">Confirm new password</label>
+          <input
+            className="input"
+            type="password"
+            value={pwConfirm}
+            onChange={e => setPwConfirm(e.target.value)}
+            autoComplete="new-password"
+          />
+        </div>
+        <button
+          className="btn btn-primary"
+          onClick={changePassword}
+          disabled={changingPw || !pwCurrent || !pwNew || !pwConfirm}
+        >
+          {changingPw ? 'Updating...' : 'Update Password'}
+        </button>
       </div>
     </div>
   )

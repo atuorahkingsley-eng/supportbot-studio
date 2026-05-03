@@ -3,6 +3,7 @@ import re
 from typing import List, Optional
 import anthropic
 from backend.config import settings
+from backend.services.brand_voice_analyzer import render_voice_block
 
 
 def build_system_prompt(
@@ -10,6 +11,7 @@ def build_system_prompt(
     faqs: list,
     visitor_context: Optional[dict] = None,   # Phase 1
     sales_config=None,                         # Phase 3
+    brand_voice=None,                          # Brand Voice DNA
 ) -> str:
     # ── Knowledge Base ────────────────────────────────────────────────────────
     faq_text = ""
@@ -72,12 +74,15 @@ SALES AGENT RULES:
 - After your response text, include on a new line: SALES_META:{{"buying_signal": <1-5>, "intent": "<pricing_inquiry|general|demo_interest|comparison>", "action": "<none|offer_discount|offer_demo|capture_lead>"}}
 """
 
+    # ── Brand Voice DNA (rendered first — sets tone for all rules below) ────
+    voice_block = render_voice_block(brand_voice)
+
     prompt = f"""You are {bot_config.agent_name}, a helpful customer support assistant for {bot_config.business_name}.
 
 Always be friendly, concise, and helpful. Answer questions based on the knowledge base below when relevant.
 
 If you cannot answer the question or the customer seems frustrated, suggest escalation by including the phrase "ESCALATE" in your response.
-{visitor_block}{language_block}{sales_block}{faq_text}"""
+{voice_block}{visitor_block}{language_block}{sales_block}{faq_text}"""
 
     return prompt
 
@@ -117,6 +122,7 @@ async def get_ai_reply(
     faqs: list,
     visitor_context: Optional[dict] = None,
     sales_config=None,
+    brand_voice=None,
 ) -> dict:
     client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
 
@@ -124,6 +130,7 @@ async def get_ai_reply(
         bot_config, faqs,
         visitor_context=visitor_context,
         sales_config=sales_config,
+        brand_voice=brand_voice,
     )
 
     response = client.messages.create(

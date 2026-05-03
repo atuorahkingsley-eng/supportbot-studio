@@ -27,6 +27,7 @@ def _tenant_detail(t: Tenant, db: Session) -> dict:
     faq_count = db.query(FAQEntry).filter(FAQEntry.bot_id == t.bot_id).count()
     convo_count = db.query(Conversation).filter(Conversation.bot_id == t.bot_id).count()
     lead_count = db.query(Lead).filter(Lead.bot_id == t.bot_id).count()
+    config = db.query(BotConfig).filter(BotConfig.bot_id == t.bot_id).first()
     return {
         "bot_id": t.bot_id,
         "owner_name": t.owner_name,
@@ -39,6 +40,7 @@ def _tenant_detail(t: Tenant, db: Session) -> dict:
         "faq_count": faq_count,
         "conversation_count": convo_count,
         "lead_count": lead_count,
+        "telegram_handle": config.telegram_handle if config else None,
         "created_at": t.created_at,
         "last_login_at": t.last_login_at,
     }
@@ -60,6 +62,10 @@ class TenantUpdate(BaseModel):
     is_active: Optional[bool] = None
     owner_name: Optional[str] = None
     company_name: Optional[str] = None
+    # Per-tenant Telegram chat target — writes through to BotConfig.
+    # Lives on BotConfig (not Tenant) so the chat path can read it
+    # alongside the rest of the bot's config.
+    telegram_handle: Optional[str] = None
 
 
 @router.post("/tenants")
@@ -158,6 +164,16 @@ def update_tenant(
     if data.company_name is not None:
         tenant.company_name = data.company_name
 
+    # telegram_handle lives on BotConfig — write through here so the super
+    # admin can manage it from the same form. Empty string clears the value
+    # (tenant intentionally turning per-tenant Telegram off).
+    if data.telegram_handle is not None:
+        config = db.query(BotConfig).filter(BotConfig.bot_id == bot_id).first()
+        if not config:
+            config = BotConfig(bot_id=bot_id)
+            db.add(config)
+        config.telegram_handle = data.telegram_handle or None  # "" -> NULL
+
     db.commit()
     return _tenant_detail(tenant, db)
 
@@ -187,6 +203,8 @@ def reset_tenant_password(
     new_password = body.get("new_password")
     if not new_password:
         raise HTTPException(status_code=400, detail="new_password required")
+    if len(new_password) < 8:
+        raise HTTPException(status_code=400, detail="New password must be at least 8 characters")
     tenant = db.query(Tenant).filter(Tenant.bot_id == bot_id).first()
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")

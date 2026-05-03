@@ -84,12 +84,30 @@ async def _do_escalate(session_id: str, customer_email: Optional[str], bot_id: s
 
     results = {"telegram": False, "email": False}
 
-    # ── Telegram (try independently) ──────────────────────────────────────────
+    # ── Telegram: platform-wide (try independently) ───────────────────────────
+    # Always fires (when settings.telegram_chat_id is configured) so the
+    # platform operator keeps visibility on every escalation.
     try:
         tg_ok = await send_telegram_message(summary)
         results["telegram"] = tg_ok
     except Exception as e:
         _log_notification_error(db, bot_id, "telegram", e)
+
+    # ── Telegram: per-tenant override (try independently) ─────────────────────
+    # Sent IN ADDITION TO the platform-wide chat — never instead of it.
+    # Only fires when the tenant has set their own telegram_handle on
+    # BotConfig. Tracked separately so partial failure (platform OK,
+    # tenant fail or vice-versa) is visible in the response.
+    if bot_config and bot_config.telegram_handle:
+        try:
+            tg_tenant_ok = await send_telegram_message(
+                summary,
+                chat_id_override=bot_config.telegram_handle,
+            )
+            results["telegram_tenant"] = tg_tenant_ok
+        except Exception as e:
+            _log_notification_error(db, bot_id, "telegram_tenant", e)
+            results["telegram_tenant"] = False
 
     # ── Email (try independently) ──────────────────────────────────────────────
     if bot_config and getattr(bot_config, "escalation_email", None):

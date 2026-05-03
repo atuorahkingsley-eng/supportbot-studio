@@ -56,7 +56,7 @@ function SuperAdminLogin({ onLogin }) {
 }
 
 // ── Tenant Row ─────────────────────────────────────────────────────────────────
-function TenantRow({ t, onEdit, onToggle }) {
+function TenantRow({ t, onEdit, onToggle, onResetPassword }) {
   const usagePct = t.monthly_message_limit > 0 ? Math.min(100, Math.round(t.messages_used_this_month / t.monthly_message_limit * 100)) : 0
   return (
     <tr style={{ borderBottom: '1px solid var(--border)' }}>
@@ -78,8 +78,9 @@ function TenantRow({ t, onEdit, onToggle }) {
         <span className={`badge ${t.is_active ? 'badge-green' : 'badge-gray'}`}>{t.is_active ? '✓ Active' : '✗ Inactive'}</span>
       </td>
       <td style={{ padding: '10px 12px' }}>
-        <div style={{ display: 'flex', gap: 6 }}>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           <button className="btn btn-secondary" style={{ padding: '3px 8px', fontSize: 11 }} onClick={() => onEdit(t)}>Edit</button>
+          <button className="btn btn-secondary" style={{ padding: '3px 8px', fontSize: 11 }} onClick={() => onResetPassword(t)}>Reset PW</button>
           <button className="btn btn-secondary" style={{ padding: '3px 8px', fontSize: 11, color: t.is_active ? '#DC2626' : '#16A34A' }} onClick={() => onToggle(t)}>
             {t.is_active ? 'Disable' : 'Enable'}
           </button>
@@ -100,6 +101,10 @@ function TenantModal({ tenant, onClose, onSaved }) {
     plan: tenant?.plan || 'basic',
     monthly_message_limit: tenant?.monthly_message_limit || 1000,
     is_active: tenant?.is_active ?? true,
+    // telegram_handle lives on BotConfig (per-tenant override). Only meaningful
+    // in edit mode — on create there's no BotConfig row yet. Empty string
+    // round-trips through admin.py as "" -> NULL to clear the override.
+    telegram_handle: tenant?.telegram_handle || '',
   })
   const [saving, setSaving] = useState(false)
   const [result, setResult] = useState(null)
@@ -112,7 +117,7 @@ function TenantModal({ tenant, onClose, onSaved }) {
       const url = isEdit ? `/api/admin/tenants/${tenant.bot_id}` : '/api/admin/tenants'
       const method = isEdit ? 'PUT' : 'POST'
       const body = isEdit
-        ? { plan: form.plan, monthly_message_limit: form.monthly_message_limit, is_active: form.is_active, owner_name: form.owner_name, company_name: form.company_name }
+        ? { plan: form.plan, monthly_message_limit: form.monthly_message_limit, is_active: form.is_active, owner_name: form.owner_name, company_name: form.company_name, telegram_handle: form.telegram_handle }
         : form
       const r = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(body) })
       const data = await r.json()
@@ -166,6 +171,18 @@ function TenantModal({ tenant, onClose, onSaved }) {
           {isEdit && (
             <>
               <div><label className="label">Monthly Message Limit</label><input className="input" type="number" value={form.monthly_message_limit} onChange={e => setForm(p => ({ ...p, monthly_message_limit: Number(e.target.value) }))} /></div>
+              <div>
+                <label className="label">Telegram Handle (optional)</label>
+                <input
+                  className="input"
+                  value={form.telegram_handle}
+                  onChange={e => setForm(p => ({ ...p, telegram_handle: e.target.value }))}
+                  placeholder="@handle  or  123456789"
+                />
+                <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 4 }}>
+                  Per-tenant escalation ping. Sent in addition to the platform-wide chat. Empty clears.
+                </div>
+              </div>
               <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
                 <input type="checkbox" checked={form.is_active} onChange={e => setForm(p => ({ ...p, is_active: e.target.checked }))} />
                 <span style={{ fontSize: 14 }}>Account Active</span>
@@ -177,6 +194,70 @@ function TenantModal({ tenant, onClose, onSaved }) {
         <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
           <button className="btn btn-primary" onClick={handleSave} disabled={saving}>{saving ? 'Saving…' : isEdit ? 'Save Changes' : 'Create Tenant'}</button>
           <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Reset Password Modal ───────────────────────────────────────────────────────
+// Super-admin override: sets a tenant's password to whatever the operator
+// chooses. Server enforces an 8-char min — we mirror that here so the
+// operator gets immediate feedback. No "current password" field, by design:
+// this is the recovery path for tenants who've lost theirs.
+function ResetPasswordModal({ tenant, onClose, onDone }) {
+  const [pw, setPw] = useState('')
+  const [confirm, setConfirm] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState('')
+
+  const handleSubmit = async () => {
+    setError('')
+    if (pw.length < 8) { setError('New password must be at least 8 characters'); return }
+    if (pw !== confirm) { setError('Passwords do not match'); return }
+    setSubmitting(true)
+    try {
+      const r = await fetch(`/api/admin/tenants/${tenant.bot_id}/reset-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ new_password: pw }),
+      })
+      if (!r.ok) {
+        const data = await r.json().catch(() => ({}))
+        setError(data.detail || 'Reset failed')
+        return
+      }
+      onDone()
+    } catch {
+      setError('Network error')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 24 }}>
+      <div className="card" style={{ maxWidth: 420, width: '100%' }}>
+        <h2 className="section-title">Reset Password</h2>
+        <p style={{ color: 'var(--text-secondary)', fontSize: 13, marginBottom: 16 }}>
+          Set a new login password for <strong>{tenant.company_name}</strong> (<code style={{ fontSize: 11 }}>{tenant.owner_email}</code>).
+          Minimum 8 characters. The tenant is not notified — you'll need to share the new password out-of-band.
+        </p>
+        <div style={{ marginBottom: 12 }}>
+          <label className="label">New password</label>
+          <input className="input" type="password" value={pw} onChange={e => setPw(e.target.value)} autoFocus autoComplete="new-password" />
+        </div>
+        <div style={{ marginBottom: 12 }}>
+          <label className="label">Confirm new password</label>
+          <input className="input" type="password" value={confirm} onChange={e => setConfirm(e.target.value)} autoComplete="new-password" />
+        </div>
+        {error && <div style={{ color: '#DC2626', fontSize: 13, background: '#FEF2F2', padding: '8px 12px', borderRadius: 6, marginBottom: 12 }}>{error}</div>}
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button className="btn btn-primary" onClick={handleSubmit} disabled={submitting || !pw || !confirm}>
+            {submitting ? 'Resetting…' : 'Reset Password'}
+          </button>
+          <button className="btn btn-secondary" onClick={onClose} disabled={submitting}>Cancel</button>
         </div>
       </div>
     </div>
@@ -197,6 +278,7 @@ function SuperAdminDashboard({ onLogout }) {
   const [search, setSearch] = useState('')
   const [showModal, setShowModal] = useState(false)
   const [editTenant, setEditTenant] = useState(null)
+  const [resetPwTenant, setResetPwTenant] = useState(null)
   const [healthLoading, setHealthLoading] = useState(false)
 
   const load = () => {
@@ -317,7 +399,13 @@ function SuperAdminDashboard({ onLogout }) {
                   </thead>
                   <tbody>
                     {filtered.map(t => (
-                      <TenantRow key={t.bot_id} t={t} onEdit={t => { setEditTenant(t); setShowModal(true) }} onToggle={handleToggle} />
+                      <TenantRow
+                        key={t.bot_id}
+                        t={t}
+                        onEdit={t => { setEditTenant(t); setShowModal(true) }}
+                        onToggle={handleToggle}
+                        onResetPassword={t => setResetPwTenant(t)}
+                      />
                     ))}
                   </tbody>
                 </table>
@@ -540,6 +628,14 @@ function SuperAdminDashboard({ onLogout }) {
           tenant={editTenant}
           onClose={() => { setShowModal(false); setEditTenant(null) }}
           onSaved={() => { load(); setShowModal(false); setEditTenant(null) }}
+        />
+      )}
+
+      {resetPwTenant && (
+        <ResetPasswordModal
+          tenant={resetPwTenant}
+          onClose={() => setResetPwTenant(null)}
+          onDone={() => setResetPwTenant(null)}
         />
       )}
     </div>

@@ -9,7 +9,7 @@ from backend.database import init_db, SessionLocal
 from backend.services.report_scheduler import start_scheduler, stop_scheduler
 from backend.routers import (
     config_api, knowledge, chat, analytics, escalate, webhooks, reports,
-    visitors, sales,
+    visitors, sales, brand_voice,
 )
 from backend.routers import auth_api, admin, health
 from backend.middleware.error_handler import ErrorHandlerMiddleware
@@ -280,6 +280,7 @@ app.include_router(webhooks.router)       # /api/webhooks
 app.include_router(reports.router)        # /api/reports
 app.include_router(visitors.router)       # /api/visitors
 app.include_router(sales.router)          # /api/sales
+app.include_router(brand_voice.router)    # /api/brand-voice
 
 
 # ── Serve widget.js ────────────────────────────────────────────────────────────

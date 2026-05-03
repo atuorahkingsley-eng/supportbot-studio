@@ -22,6 +22,10 @@ class BotConfigSchema(BaseModel):
     # stored value on save. The widget falls back to its own default if
     # this is empty / null.
     greeting_message: Optional[str] = None
+    # Per-tenant Telegram chat target. None = field not in payload (don't
+    # touch DB). "" = explicit clear by the tenant. See database.py for
+    # the @username-vs-numeric-id caveat.
+    telegram_handle: Optional[str] = None
 
 
 class BotConfigResponse(BotConfigSchema):
@@ -97,6 +101,9 @@ def update_config(
     # the field wasn't in the payload at all.
     if data.greeting_message is not None:
         config.greeting_message = data.greeting_message
+    if data.telegram_handle is not None:
+        # "" -> NULL so empty form input clears the override cleanly.
+        config.telegram_handle = data.telegram_handle or None
     config.updated_at = datetime.utcnow()
 
     db.commit()

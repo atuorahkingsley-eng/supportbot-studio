@@ -148,6 +148,9 @@ def change_password(
     tenant: Tenant = Depends(get_current_client),
     db: Session = Depends(get_db),
 ):
+    # Server-side mirror of the frontend min-length check — never trust the UI.
+    if len(data.new_password) < 8:
+        raise HTTPException(status_code=400, detail="New password must be at least 8 characters")
     if not verify_password(data.current_password, tenant.password_hash):
         raise HTTPException(status_code=400, detail="Current password is incorrect")
     tenant.password_hash = hash_password(data.new_password)

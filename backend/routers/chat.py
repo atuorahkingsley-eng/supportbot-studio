@@ -8,7 +8,7 @@ from typing import Optional, Any
 
 from backend.database import (
     get_db, SessionLocal, Conversation, Message, FAQEntry, BotConfig,
-    Visitor, VisitorConversation, SalesConfig, Tenant,
+    Visitor, VisitorConversation, SalesConfig, Tenant, BrandVoice,
 )
 from backend.services.auto_reply import find_auto_reply
 from backend.services.ai_chat import get_ai_reply, generate_visitor_summary, build_system_prompt
@@ -159,6 +159,7 @@ async def _get_ai_reply_with_fallback(
     faqs: list,
     visitor_context: Optional[dict],
     sales_config,
+    brand_voice,
     bot_id: str,
     db: Session,
 ) -> dict:
@@ -182,6 +183,7 @@ async def _get_ai_reply_with_fallback(
             faqs=faqs,
             visitor_context=visitor_context,
             sales_config=sales_config,
+            brand_voice=brand_voice,
         )
         return result
     except Exception:
@@ -263,6 +265,11 @@ async def _process_chat(
     faqs = db.query(FAQEntry).filter(FAQEntry.bot_id == bot_id).all()
     bot_config = db.query(BotConfig).filter(BotConfig.bot_id == bot_id).first()
     sales_config = db.query(SalesConfig).filter(SalesConfig.bot_id == bot_id).first()
+    # Brand Voice DNA — only loaded when active to skip the row entirely otherwise.
+    brand_voice = db.query(BrandVoice).filter(
+        BrandVoice.bot_id == bot_id,
+        BrandVoice.is_active == True,
+    ).first()
 
     # Smart routing: auto-reply first (free, instant, no external dependency)
     auto_reply = find_auto_reply(message, faqs)
@@ -292,6 +299,7 @@ async def _process_chat(
             faqs=faqs,
             visitor_context=visitor_context,
             sales_config=sales_config,
+            brand_voice=brand_voice,
             bot_id=bot_id,
             db=db,
         )
