@@ -28,12 +28,12 @@ export default function AdminPanel({ config, setConfig }) {
   useEffect(() => { setForm(config) }, [config])
 
   useEffect(() => {
-    fetch('/api/knowledge').then(r => r.json()).then(setFaqs).catch(() => {})
+    fetch('/api/knowledge', { credentials: 'include' }).then(r => r.json()).then(setFaqs).catch(() => {})
   }, [])
 
   // Fetch existing brand voice on mount — 404 is the empty state, not an error.
   useEffect(() => {
-    fetch('/api/brand-voice').then(r => {
+    fetch('/api/brand-voice', { credentials: 'include' }).then(r => {
       if (r.status === 404) return null
       if (!r.ok) throw new Error('fetch failed')
       return r.json()
@@ -47,6 +47,7 @@ export default function AdminPanel({ config, setConfig }) {
       const r = await fetch('/api/config', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify(form),
       })
       const data = await r.json()
@@ -63,6 +64,7 @@ export default function AdminPanel({ config, setConfig }) {
       const r = await fetch('/api/knowledge', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ question: newQ, answer: newA }),
       })
       const faq = await r.json()
@@ -77,7 +79,7 @@ export default function AdminPanel({ config, setConfig }) {
 
   const deleteFaq = async (id) => {
     try {
-      await fetch(`/api/knowledge/${id}`, { method: 'DELETE' })
+      await fetch(`/api/knowledge/${id}`, { method: 'DELETE', credentials: 'include' })
       setFaqs(prev => prev.filter(f => f.id !== id))
       addToast('FAQ removed', 'info')
     } catch {
@@ -96,6 +98,7 @@ export default function AdminPanel({ config, setConfig }) {
       const r = await fetch('/api/brand-voice/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ samples: voiceSamples }),
       })
       if (r.status === 429) {
@@ -122,6 +125,7 @@ export default function AdminPanel({ config, setConfig }) {
       const r = await fetch('/api/brand-voice', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ is_active: !voiceProfile.is_active }),
       })
       if (!r.ok) throw new Error('toggle failed')
@@ -137,7 +141,7 @@ export default function AdminPanel({ config, setConfig }) {
     if (!voiceProfile) return
     if (!confirm('Delete the saved brand voice profile? You can always re-analyze later.')) return
     try {
-      const r = await fetch('/api/brand-voice', { method: 'DELETE' })
+      const r = await fetch('/api/brand-voice', { method: 'DELETE', credentials: 'include' })
       if (!r.ok) throw new Error('delete failed')
       setVoiceProfile(null)
       setVoiceSamples('')
@@ -162,6 +166,7 @@ export default function AdminPanel({ config, setConfig }) {
       const r = await fetch('/api/auth/change-password', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ current_password: pwCurrent, new_password: pwNew }),
       })
       if (!r.ok) {
@@ -192,10 +197,10 @@ export default function AdminPanel({ config, setConfig }) {
     const fd = new FormData()
     fd.append('file', file)
     try {
-      const r = await fetch('/api/knowledge/upload', { method: 'POST', body: fd })
+      const r = await fetch('/api/knowledge/upload', { method: 'POST', credentials: 'include', body: fd })
       const data = await r.json()
       setUploadResult(data)
-      fetch('/api/knowledge').then(r => r.json()).then(setFaqs)
+      fetch('/api/knowledge', { credentials: 'include' }).then(r => r.json()).then(setFaqs)
       addToast(`Extracted ${data.added} Q&A pairs from ${file.name}`, 'success')
     } catch {
       addToast('Upload failed', 'error')

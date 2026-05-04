@@ -15,7 +15,7 @@ export default function WebhookSettings() {
   const [testing, setTesting] = useState({})
 
   useEffect(() => {
-    fetch('/api/webhooks').then(r => r.json()).then(setWebhooks).catch(() => {})
+    fetch('/api/webhooks', { credentials: 'include' }).then(r => r.json()).then(setWebhooks).catch(() => {})
   }, [])
 
   const addWebhook = async () => {
@@ -24,6 +24,7 @@ export default function WebhookSettings() {
       const r = await fetch('/api/webhooks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify(form),
       })
       const wh = await r.json()
@@ -37,7 +38,7 @@ export default function WebhookSettings() {
 
   const deleteWebhook = async (id) => {
     try {
-      await fetch(`/api/webhooks/${id}`, { method: 'DELETE' })
+      await fetch(`/api/webhooks/${id}`, { method: 'DELETE', credentials: 'include' })
       setWebhooks(prev => prev.filter(w => w.id !== id))
       addToast('Webhook removed', 'info')
     } catch {
@@ -48,7 +49,7 @@ export default function WebhookSettings() {
   const testWebhook = async (id) => {
     setTesting(prev => ({ ...prev, [id]: true }))
     try {
-      const r = await fetch(`/api/webhooks/${id}/test`, { method: 'POST' })
+      const r = await fetch(`/api/webhooks/${id}/test`, { method: 'POST', credentials: 'include' })
       const data = await r.json()
       if (data.ok) {
         addToast('Test message sent successfully!', 'success')
@@ -69,6 +70,7 @@ export default function WebhookSettings() {
       const r = await fetch(`/api/webhooks/${wh.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ enabled: !wh.enabled }),
       })
       const updated = await r.json()
