@@ -136,14 +136,23 @@ def get_hourly(
     db: Session = Depends(get_db),
     tenant: Tenant = Depends(get_current_client),
 ):
-    msgs = db.query(Message).filter(
-        Message.bot_id == tenant.bot_id, Message.role == "user"
-    ).all()
-    hourly = [0] * 24
-    for msg in msgs:
-        if msg.created_at:
-            hourly[msg.created_at.hour] += 1
-    return [{"hour": h, "count": hourly[h]} for h in range(24)]
+    # Pre-fix this loaded every user message into memory and binned by
+    # hour in Python — fine on a fresh tenant, a memory bomb on one with
+    # 100K+ messages. Push the GROUP BY into SQLite via strftime so the
+    # DB returns at most 24 rows. SQLite's strftime returns zero-padded
+    # hours ('00'..'23'); coerce to int for the response shape.
+    hour_expr = func.strftime("%H", Message.created_at)
+    rows = db.query(
+        hour_expr.label("hour"),
+        func.count(Message.id).label("count"),
+    ).filter(
+        Message.bot_id == tenant.bot_id,
+        Message.role == "user",
+        Message.created_at.isnot(None),
+    ).group_by(hour_expr).all()
+
+    counts = {int(r.hour): r.count for r in rows if r.hour is not None}
+    return [{"hour": h, "count": counts.get(h, 0)} for h in range(24)]
 
 
 @router.get("/export")

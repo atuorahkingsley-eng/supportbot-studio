@@ -1,7 +1,8 @@
+import re
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from typing import Optional
 
 from backend.database import get_db, BotConfig, Tenant
@@ -11,13 +12,32 @@ from backend.services.rate_limit import limiter
 router = APIRouter(prefix="/api/config", tags=["config"])
 
 
+# Lightweight email regex — matches "<local>@<domain>.<tld>" with no whitespace.
+# Deliberately not using pydantic.EmailStr because that pulls the
+# `email-validator` package, which isn't a current dependency. KAY_SKILL.md
+# forbids silent dep adds; if stricter validation is wanted later, add the
+# package explicitly and switch this field to EmailStr.
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
 class BotConfigSchema(BaseModel):
     business_name: str
     agent_name: str
     brand_color: str
     welcome_message: str
-    escalation_email: str
+    # Optional + format-validated. "" / None / missing all coerce to None so
+    # an empty form input doesn't 422 the save.
+    escalation_email: Optional[str] = None
     voice_enabled: bool = True
+
+    @field_validator("escalation_email", mode="before")
+    @classmethod
+    def _validate_escalation_email(cls, v):
+        if v is None or v == "":
+            return None
+        if not isinstance(v, str) or not _EMAIL_RE.match(v):
+            raise ValueError("Invalid email address")
+        return v
     # Optional so older clients that don't send the field don't wipe the
     # stored value on save. The widget falls back to its own default if
     # this is empty / null.

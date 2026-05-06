@@ -12,7 +12,8 @@ from backend.services.telegram_notify import send_telegram_message
 from backend.services.email_notify import send_emailjs
 from backend.services.webhook_sender import dispatch_webhook
 from backend.services.auth import get_current_client
-from backend.services.rate_limit import limiter
+from backend.services.rate_limit import limiter, check_bot_id_rate_limit
+from slowapi.util import get_remote_address
 
 router = APIRouter(prefix="/api/escalate", tags=["escalate"])
 
@@ -149,7 +150,12 @@ async def _do_escalate(session_id: str, customer_email: Optional[str], bot_id: s
             _log_notification_error(db, bot_id, f"webhook_{wh.platform}", e)
             results[f"webhook_{wh.platform}_{wh.id}"] = False
 
-    # ── If ALL channels failed, queue for retry ───────────────────────────────
+    # ── If ALL channels failed, queue for retry and report failure ────────────
+    # Pre-fix this swallowed the queue-insert error and still committed
+    # convo.escalated = True alongside an "ok: True" response — the customer
+    # believed their escalation went through when in fact nobody was notified.
+    # Now: commit the pending row in its own transaction, then raise 500 so
+    # the caller knows the escalation has not yet been delivered.
     all_results = list(results.values())
     if all_results and not any(all_results):
         try:
@@ -160,8 +166,14 @@ async def _do_escalate(session_id: str, customer_email: Optional[str], bot_id: s
                 retry_after=datetime.utcnow() + timedelta(minutes=5),
             )
             db.add(pending)
-        except Exception:
-            pass
+            db.commit()
+        except Exception as e:
+            db.rollback()
+            _log_notification_error(db, bot_id, "pending_escalation_queue", e)
+        raise HTTPException(
+            status_code=500,
+            detail="All notification channels failed; queued for retry.",
+        )
 
     convo.escalated = True
     if customer_email:
@@ -186,6 +198,10 @@ async def public_escalate(
     fans out to Telegram + email + every configured webhook. Easy abuse
     vector if left wide open.
     """
+    # Per-(bot_id, ip) second-line rate limit — see chat.public_chat.
+    if not check_bot_id_rate_limit(data.bot_id, get_remote_address(request), max_per_minute=5):
+        raise HTTPException(status_code=429, detail="Rate limit exceeded for this bot")
+
     tenant = db.query(Tenant).filter(
         Tenant.bot_id == data.bot_id,
         Tenant.is_active == True,

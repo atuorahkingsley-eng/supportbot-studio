@@ -77,17 +77,26 @@ def get_visitor_history(
     if not visitor:
         raise HTTPException(status_code=404, detail="Visitor not found")
 
+    # Tenant isolation: pin the link lookup to tenant.bot_id, otherwise a
+    # visitor_id that happens to exist in another tenant's space leaks that
+    # tenant's conversation links. Follow-up Conversation + Message reads
+    # are also pinned defensively.
     links = db.query(VisitorConversation).filter(
-        VisitorConversation.visitor_id == visitor_id
+        VisitorConversation.visitor_id == visitor_id,
+        VisitorConversation.bot_id == tenant.bot_id,
     ).all()
     conv_ids = [lk.conversation_id for lk in links]
 
     convos = []
     for cid in conv_ids:
-        c = db.query(Conversation).filter(Conversation.id == cid).first()
+        c = db.query(Conversation).filter(
+            Conversation.id == cid,
+            Conversation.bot_id == tenant.bot_id,
+        ).first()
         if c:
             msgs = db.query(Message).filter(
-                Message.conversation_id == cid
+                Message.conversation_id == cid,
+                Message.bot_id == tenant.bot_id,
             ).order_by(Message.created_at.asc()).all()
             convos.append({
                 "id": c.id,

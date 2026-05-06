@@ -15,7 +15,7 @@ export default function ReportSettings() {
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
-    fetch('/api/reports').then(r => r.json()).then(setSchedule).catch(() => {})
+    fetch('/api/reports', { credentials: 'include' }).then(r => r.json()).then(setSchedule).catch(() => {})
   }, [])
 
   const save = async () => {
@@ -23,6 +23,7 @@ export default function ReportSettings() {
     try {
       const r = await fetch('/api/reports', {
         method: 'PUT',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(schedule),
       })

@@ -7,7 +7,8 @@ from typing import Optional, List
 
 from backend.database import get_db, SalesConfig, Lead, Tenant
 from backend.services.auth import get_current_client
-from backend.services.rate_limit import limiter
+from backend.services.rate_limit import limiter, check_bot_id_rate_limit
+from slowapi.util import get_remote_address
 
 router = APIRouter(prefix="/api/sales", tags=["sales"])
 
@@ -131,6 +132,10 @@ def capture_lead_public(
     data: PublicLeadCreate,
     db: Session = Depends(get_db),
 ):
+    # Per-(bot_id, ip) second-line rate limit — see chat.public_chat.
+    if not check_bot_id_rate_limit(data.bot_id, get_remote_address(request), max_per_minute=20):
+        raise HTTPException(status_code=429, detail="Rate limit exceeded for this bot")
+
     from backend.database import Tenant as TenantModel
     tenant = db.query(TenantModel).filter(
         TenantModel.bot_id == data.bot_id,

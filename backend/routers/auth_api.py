@@ -12,7 +12,7 @@ from typing import Optional
 from backend.database import get_db, Tenant, SuperAdmin
 from backend.services.auth import (
     hash_password, verify_password, create_token, decode_token,
-    get_current_client, get_super_admin,
+    get_current_client, get_super_admin, validate_password_strength,
 )
 from backend.services.rate_limit import limiter
 from backend.config import settings
@@ -52,7 +52,10 @@ def super_login(request: Request, data: SuperLoginRequest, response: Response, d
         httponly=True, samesite=COOKIE_SAMESITE, secure=COOKIE_SECURE,
         max_age=60 * 60 * 24 * 7,  # 7 days
     )
-    return {"token": token, "role": "super_admin"}
+    # Token lives ONLY in the HttpOnly cookie. Returning it in the body too
+    # would let any XSS payload read the JWT from JS — defeats the point of
+    # HttpOnly. Programmatic API-key clients use Authorization: Bearer instead.
+    return {"role": "super_admin"}
 
 
 # ── Client login ───────────────────────────────────────────────────────────────
@@ -76,8 +79,8 @@ def client_login(request: Request, data: ClientLoginRequest, response: Response,
         httponly=True, samesite=COOKIE_SAMESITE, secure=COOKIE_SECURE,
         max_age=60 * 60 * 24 * 7,
     )
+    # Token lives ONLY in the HttpOnly cookie. See super_login for rationale.
     return {
-        "token": token,
         "bot_id": tenant.bot_id,
         "role": "client",
         "company_name": tenant.company_name,
@@ -151,6 +154,14 @@ def change_password(
     # Server-side mirror of the frontend min-length check — never trust the UI.
     if len(data.new_password) < 8:
         raise HTTPException(status_code=400, detail="New password must be at least 8 characters")
+    # bcrypt silently truncates input past 72 bytes — two distinct long passwords
+    # could hash identically. Reject at the boundary so the user picks a shorter
+    # one. Same fence as admin.py:reset_tenant_password / change_super_password.
+    if len(data.new_password.encode("utf-8")) > 72:
+        raise HTTPException(status_code=400, detail="Password must be 72 bytes or fewer (bcrypt limit)")
+    strength_error = validate_password_strength(data.new_password)
+    if strength_error:
+        raise HTTPException(status_code=400, detail=strength_error)
     if not verify_password(data.current_password, tenant.password_hash):
         raise HTTPException(status_code=400, detail="Current password is incorrect")
     tenant.password_hash = hash_password(data.new_password)

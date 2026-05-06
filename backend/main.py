@@ -144,6 +144,8 @@ async def _retry_pending_escalations():
         read_db.close()
 
     # Process each in its own session — failures stay isolated.
+    from backend.routers.escalate import _log_notification_error
+
     for pid, session_id, customer_email, bot_id in items:
         db = SessionLocal()
         try:
@@ -152,8 +154,12 @@ async def _retry_pending_escalations():
             if p:
                 db.delete(p)
                 db.commit()
-        except Exception:
+        except Exception as e:
             db.rollback()
+            # Pre-fix this except: pass swallowed every retry failure — the
+            # retry counter could climb to max silently and the row would
+            # then sit forever. Log to ErrorLog so the operator can see it.
+            _log_notification_error(db, bot_id, "pending_escalation_retry", e)
             p = db.query(PendingEscalation).filter(PendingEscalation.id == pid).first()
             if p:
                 p.retry_count += 1
@@ -231,6 +237,8 @@ class TieredCORSMiddleware:
 
     _PUBLIC_EXACT = frozenset({
         "/api/chat/public",
+        "/api/chat/rate",
+        "/api/escalate/public",
         "/api/sales/leads/capture/public",
     })
     _PUBLIC_PREFIXES = ("/api/config/public/",)

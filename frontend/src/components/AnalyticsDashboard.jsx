@@ -69,7 +69,7 @@ function CustomersSection() {
 
   useEffect(() => {
     const params = filter === 'has_email' ? '?has_email=true' : filter === 'returning' ? '' : ''
-    fetch(`/api/visitors${params}`)
+    fetch(`/api/visitors${params}`, { credentials: 'include' })
       .then(r => r.json())
       .then(data => {
         if (filter === 'returning') {
@@ -85,7 +85,7 @@ function CustomersSection() {
   const loadHistory = async (visitor) => {
     setSelected(visitor)
     setHistory(null)
-    const r = await fetch(`/api/visitors/${visitor.visitor_id}/history`)
+    const r = await fetch(`/api/visitors/${visitor.visitor_id}/history`, { credentials: 'include' })
     const data = await r.json()
     setHistory(data)
   }
@@ -198,12 +198,13 @@ export default function AnalyticsDashboard() {
 
   const load = () => {
     setLoading(true)
+    const opts = { credentials: 'include' }
     Promise.all([
-      fetch('/api/analytics/summary').then(r => r.json()),
-      fetch('/api/analytics/conversations?per_page=20').then(r => r.json()),
-      fetch('/api/analytics/top-questions').then(r => r.json()),
-      fetch('/api/analytics/hourly').then(r => r.json()),
-      fetch('/api/analytics/languages').then(r => r.json()),
+      fetch('/api/analytics/summary', opts).then(r => r.json()),
+      fetch('/api/analytics/conversations?per_page=20', opts).then(r => r.json()),
+      fetch('/api/analytics/top-questions', opts).then(r => r.json()),
+      fetch('/api/analytics/hourly', opts).then(r => r.json()),
+      fetch('/api/analytics/languages', opts).then(r => r.json()),
     ]).then(([s, c, q, h, l]) => {
       setSummary(s)
       setConvos(c.conversations || [])

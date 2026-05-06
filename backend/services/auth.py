@@ -3,6 +3,7 @@ Authentication utilities for SupportBot multi-tenant.
 Pure functions only — no database imports at module level to avoid circular imports.
 FastAPI dependency functions use lazy Tenant imports via the db session.
 """
+import re
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -19,6 +20,13 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 ALGORITHM = "HS256"
 TOKEN_EXPIRE_HOURS = 24 * 7  # 7 days
 
+# Password strength: at least one letter + one digit. Stops the obvious
+# weak inputs (all-digit PINs, all-letter dictionary words) without being
+# so strict that legitimate users hit it daily. Symbol/case rules are
+# deliberately omitted — they push users toward password reuse.
+_PWD_HAS_LETTER = re.compile(r"[A-Za-z]")
+_PWD_HAS_DIGIT = re.compile(r"\d")
+
 
 # ── Pure utilities (no DB access) ─────────────────────────────────────────────
 
@@ -28,6 +36,19 @@ def hash_password(password: str) -> str:
 
 def verify_password(plain: str, hashed: str) -> bool:
     return pwd_context.verify(plain, hashed)
+
+
+def validate_password_strength(password: str) -> Optional[str]:
+    """Return None if the password meets strength rules, else an error string.
+
+    Caller raises the HTTPException (keeps this helper framework-free and
+    unit-testable). Rule: at least one letter AND one digit.
+    """
+    if not _PWD_HAS_LETTER.search(password):
+        return "Password must contain at least one letter"
+    if not _PWD_HAS_DIGIT.search(password):
+        return "Password must contain at least one number"
+    return None
 
 
 def create_token(data: dict, expires_hours: int = TOKEN_EXPIRE_HOURS) -> str:

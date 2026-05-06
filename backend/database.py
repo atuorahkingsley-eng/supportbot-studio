@@ -3,8 +3,9 @@ DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./supportbot.db")
 from datetime import datetime
 from sqlalchemy import (
     create_engine, Column, Integer, String, Boolean, DateTime, Float,
-    ForeignKey, Text, text, Date, UniqueConstraint,
+    ForeignKey, Text, text, Date, UniqueConstraint, event,
 )
+from sqlalchemy.engine import Engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 
@@ -17,6 +18,22 @@ engine = create_engine(
     settings.database_url,
     connect_args={"check_same_thread": False}
 )
+
+
+# ── SQLite FK enforcement ─────────────────────────────────────────────────────
+# SQLite ships with foreign-key checks DISABLED by default — every ForeignKey()
+# in this file is advisory until we flip this PRAGMA on every connection.
+# Without it, deleting a Conversation leaves orphan Message rows, deleting a
+# Tenant leaves orphan everything. Only fires for SQLite dialects so a future
+# move to Postgres is unaffected.
+@event.listens_for(Engine, "connect")
+def _sqlite_fk_pragma(dbapi_connection, connection_record):
+    # Skip non-SQLite drivers (Postgres etc. enforce FKs natively).
+    if dbapi_connection.__class__.__module__.startswith("sqlite3"):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
@@ -376,7 +393,15 @@ def init_db():
     Base.metadata.create_all(bind=engine)
     _migrate_columns()
 
-    # Seed defaults
+    # ── Default-tenant seed (DEV ONLY) ────────────────────────────────────────
+    # In production we never auto-create a tenant. The hardcoded admin@localhost
+    # / admin123 credentials would otherwise be live the moment the first boot
+    # finished — anyone who found the URL before the operator created a real
+    # tenant would own the platform. Production operators must create the first
+    # tenant explicitly via /api/admin/tenants (after super-admin login).
+    if os.getenv("ENV", "production") != "dev":
+        return
+
     db = SessionLocal()
     try:
         # Create default tenant if none exists

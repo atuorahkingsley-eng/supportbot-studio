@@ -14,6 +14,12 @@ from backend.config import settings
 from backend.database import ErrorLog
 
 
+# ── Anthropic client (module-level, reused) ───────────────────────────────────
+# One client per process with a 30s ceiling on any single call. Auto-heal runs
+# inside the request hot path — a hung Claude diagnosis would pin a worker.
+_client = anthropic.Anthropic(api_key=settings.anthropic_api_key, timeout=30.0)
+
+
 # ── Healing strategy map ───────────────────────────────────────────────────────
 HEAL_STRATEGIES = {
     "api_error": {
@@ -175,8 +181,6 @@ async def claude_diagnose_and_heal(error_log: ErrorLog, db: Session) -> bool:
         return False
 
     try:
-        client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
-
         prompt = f"""You are a DevOps engineer diagnosing a production error in a Python FastAPI web application (SupportBot Studio — a multi-tenant AI chatbot SaaS).
 
 Error type: {error_log.error_type}
@@ -200,7 +204,7 @@ Analyze this error and respond with ONLY a JSON object (no markdown, no extra te
 
 Only set can_auto_fix to true if the fix is safe to apply automatically (like retrying, clearing a cache, fixing missing data). Set to false for anything that requires code changes or manual investigation."""
 
-        response = client.messages.create(
+        response = _client.messages.create(
             model="claude-3-5-haiku-20241022",
             max_tokens=400,
             messages=[{"role": "user", "content": prompt}],

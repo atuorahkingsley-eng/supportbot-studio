@@ -167,7 +167,7 @@ export default function ChatWidget({ config, botId }) {
 
   // Load sales config
   useEffect(() => {
-    fetch('/api/sales/config').then(r => r.json()).then(setSalesConfig).catch(() => {})
+    fetch('/api/sales/config', { credentials: 'include' }).then(r => r.json()).then(setSalesConfig).catch(() => {})
   }, [])
 
   // Init welcome message
@@ -293,6 +293,7 @@ export default function ChatWidget({ config, botId }) {
     try {
       const r = await fetch('/api/chat', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           session_id: sessionId,
@@ -334,6 +335,7 @@ export default function ChatWidget({ config, botId }) {
     try {
       await fetch('/api/escalate', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ session_id: sessionId, customer_email: escalateEmail }),
       })
@@ -371,6 +373,7 @@ export default function ChatWidget({ config, botId }) {
     try {
       await fetch('/api/sales/leads/capture', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           email, source: 'chat_capture', buying_signal_score: 4,

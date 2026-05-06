@@ -14,7 +14,7 @@ from backend.database import (
     get_db, Tenant, SuperAdmin, BotConfig, FAQEntry, Conversation,
     Message, Lead, UsageLog, ErrorLog, generate_bot_id, generate_api_key,
 )
-from backend.services.auth import hash_password, get_super_admin
+from backend.services.auth import hash_password, get_super_admin, validate_password_strength
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -79,7 +79,19 @@ def create_tenant(
 
     limits = {"basic": 1000, "pro": 5000, "enterprise": 20000}
 
+    # generate_bot_id() returns 8 chars × 36 alphabet — collision is
+    # astronomically unlikely but unhandled it surfaces as a raw 500 from
+    # SQLite IntegrityError. Pre-check and return 409 instead. Retry once
+    # since regenerating is cheap.
     bot_id = generate_bot_id()
+    if db.query(Tenant).filter(Tenant.bot_id == bot_id).first():
+        bot_id = generate_bot_id()
+        if db.query(Tenant).filter(Tenant.bot_id == bot_id).first():
+            raise HTTPException(
+                status_code=409,
+                detail="bot_id collision — please retry the request",
+            )
+
     api_key = generate_api_key()
 
     tenant = Tenant(
@@ -205,6 +217,13 @@ def reset_tenant_password(
         raise HTTPException(status_code=400, detail="new_password required")
     if len(new_password) < 8:
         raise HTTPException(status_code=400, detail="New password must be at least 8 characters")
+    # bcrypt silently truncates input past 72 bytes — two distinct long passwords
+    # could hash identically. Reject at the boundary so the user picks a shorter one.
+    if len(new_password.encode("utf-8")) > 72:
+        raise HTTPException(status_code=400, detail="Password must be 72 bytes or fewer (bcrypt limit)")
+    strength_error = validate_password_strength(new_password)
+    if strength_error:
+        raise HTTPException(status_code=400, detail=strength_error)
     tenant = db.query(Tenant).filter(Tenant.bot_id == bot_id).first()
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
@@ -238,6 +257,12 @@ def change_super_password(
     new_password = body.get("new_password")
     if not new_password or len(new_password) < 8:
         raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+    # bcrypt silently truncates input past 72 bytes — see reset_tenant_password.
+    if len(new_password.encode("utf-8")) > 72:
+        raise HTTPException(status_code=400, detail="Password must be 72 bytes or fewer (bcrypt limit)")
+    strength_error = validate_password_strength(new_password)
+    if strength_error:
+        raise HTTPException(status_code=400, detail=strength_error)
     admin = db.query(SuperAdmin).filter(
         SuperAdmin.username == payload["username"]
     ).first()

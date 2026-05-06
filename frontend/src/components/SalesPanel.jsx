@@ -10,9 +10,10 @@ export default function SalesPanel() {
   const [tab, setTab] = useState('config')
 
   useEffect(() => {
-    fetch('/api/sales/config').then(r => r.json()).then(setConfig).catch(() => {})
-    fetch('/api/sales/leads').then(r => r.json()).then(setLeads).catch(() => {})
-    fetch('/api/sales/leads/stats').then(r => r.json()).then(setStats).catch(() => {})
+    const opts = { credentials: 'include' }
+    fetch('/api/sales/config', opts).then(r => r.json()).then(setConfig).catch(() => {})
+    fetch('/api/sales/leads', opts).then(r => r.json()).then(setLeads).catch(() => {})
+    fetch('/api/sales/leads/stats', opts).then(r => r.json()).then(setStats).catch(() => {})
   }, [])
 
   const saveConfig = async () => {
@@ -20,6 +21,7 @@ export default function SalesPanel() {
     try {
       const r = await fetch('/api/sales/config', {
         method: 'PUT',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(config),
       })
@@ -35,7 +37,7 @@ export default function SalesPanel() {
 
   const markFollowedUp = async (id) => {
     try {
-      await fetch(`/api/sales/leads/${id}/follow-up`, { method: 'PUT' })
+      await fetch(`/api/sales/leads/${id}/follow-up`, { method: 'PUT', credentials: 'include' })
       setLeads(prev => prev.map(l => l.id === id ? { ...l, followed_up: true } : l))
       addToast('Marked as followed up', 'success')
     } catch {
