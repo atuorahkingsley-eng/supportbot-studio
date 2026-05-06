@@ -1,0 +1,772 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="SupportBot Studio — AI customer support that sets up in minutes, works on any website, and is powered by Claude AI." />
+  <title>SupportBot Studio — AI Customer Support for Your Business</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+
+  <style>
+    :root {
+      --primary: #6366F1;
+      --primary-dark: #4F46E5;
+      --primary-light: #EEF2FF;
+      --text: #0F172A;
+      --text-muted: #475569;
+      --border: #E2E8F0;
+      --bg: #FFFFFF;
+      --bg-alt: #F8FAFC;
+      --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04);
+      --shadow-md: 0 4px 12px rgba(15, 23, 42, 0.06);
+      --shadow-lg: 0 12px 32px rgba(99, 102, 241, 0.18);
+      --radius: 12px;
+      --radius-lg: 16px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      color: var(--text);
+      background: var(--bg);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .container {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    /* ── Nav ─────────────────────────────────────────────────────── */
+    .nav {
+      position: sticky;
+      top: 0;
+      background: rgba(255, 255, 255, 0.92);
+      backdrop-filter: blur(8px);
+      border-bottom: 1px solid var(--border);
+      z-index: 100;
+    }
+    .nav-inner {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 0;
+    }
+    .logo {
+      font-weight: 800;
+      font-size: 18px;
+      color: var(--text);
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .logo-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--primary);
+      display: inline-block;
+    }
+    .nav-cta {
+      background: var(--primary);
+      color: #fff;
+      padding: 10px 18px;
+      border-radius: var(--radius);
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 14px;
+      transition: background 0.2s;
+    }
+    .nav-cta:hover { background: var(--primary-dark); }
+
+    /* ── Hero ────────────────────────────────────────────────────── */
+    .hero {
+      padding: 96px 0 80px;
+      text-align: center;
+      background: linear-gradient(180deg, #FFFFFF 0%, #F5F3FF 100%);
+    }
+    .hero h1 {
+      font-size: clamp(36px, 6vw, 60px);
+      font-weight: 800;
+      line-height: 1.1;
+      letter-spacing: -0.02em;
+      margin-bottom: 20px;
+    }
+    .hero h1 .accent { color: var(--primary); }
+    .hero p {
+      font-size: clamp(17px, 2.4vw, 20px);
+      color: var(--text-muted);
+      max-width: 620px;
+      margin: 0 auto 36px;
+    }
+    .btn-primary {
+      display: inline-block;
+      background: var(--primary);
+      color: #fff;
+      padding: 16px 32px;
+      border-radius: var(--radius);
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 16px;
+      border: none;
+      cursor: pointer;
+      box-shadow: var(--shadow-lg);
+      transition: transform 0.15s, background 0.2s;
+    }
+    .btn-primary:hover {
+      background: var(--primary-dark);
+      transform: translateY(-1px);
+    }
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: #fff;
+      border: 1px solid var(--border);
+      padding: 6px 14px;
+      border-radius: 999px;
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-bottom: 24px;
+      box-shadow: var(--shadow-sm);
+    }
+    .hero-badge .pulse {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #10B981;
+      box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.15);
+    }
+
+    /* ── Section base ─────────────────────────────────────────────── */
+    section { padding: 88px 0; }
+    section.alt { background: var(--bg-alt); }
+    .section-head {
+      text-align: center;
+      max-width: 640px;
+      margin: 0 auto 56px;
+    }
+    .section-head h2 {
+      font-size: clamp(28px, 4vw, 40px);
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin-bottom: 12px;
+    }
+    .section-head p {
+      color: var(--text-muted);
+      font-size: 17px;
+    }
+    .eyebrow {
+      display: inline-block;
+      color: var(--primary);
+      font-weight: 600;
+      font-size: 13px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 12px;
+    }
+
+    /* ── Feature cards ─────────────────────────────────────────────── */
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+    }
+    .card {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 32px;
+      box-shadow: var(--shadow-sm);
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .card:hover {
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-md);
+    }
+    .card-icon {
+      width: 48px;
+      height: 48px;
+      border-radius: 12px;
+      background: var(--primary-light);
+      color: var(--primary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 20px;
+    }
+    .card h3 {
+      font-size: 19px;
+      font-weight: 600;
+      margin-bottom: 10px;
+    }
+    .card p {
+      color: var(--text-muted);
+      font-size: 15px;
+    }
+
+    /* ── How it works ─────────────────────────────────────────────── */
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+      counter-reset: step;
+    }
+    .step {
+      position: relative;
+      padding: 32px;
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+    }
+    .step-num {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: var(--primary);
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 15px;
+      margin-bottom: 18px;
+    }
+    .step h3 {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+    .step p {
+      color: var(--text-muted);
+      font-size: 15px;
+    }
+
+    /* ── Who it's for ─────────────────────────────────────────────── */
+    .audience {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      justify-content: center;
+      max-width: 800px;
+      margin: 0 auto;
+    }
+    .chip {
+      background: #fff;
+      border: 1px solid var(--border);
+      padding: 10px 18px;
+      border-radius: 999px;
+      font-size: 15px;
+      font-weight: 500;
+      color: var(--text);
+      box-shadow: var(--shadow-sm);
+    }
+
+    /* ── Pricing ──────────────────────────────────────────────────── */
+    .pricing-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+      align-items: stretch;
+    }
+    .price-card {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 36px 32px;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+    }
+    .price-card.featured {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 1px var(--primary), var(--shadow-lg);
+      transform: scale(1.02);
+    }
+    .price-badge {
+      position: absolute;
+      top: -12px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--primary);
+      color: #fff;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 5px 14px;
+      border-radius: 999px;
+      letter-spacing: 0.04em;
+    }
+    .price-tier {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--primary);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 12px;
+    }
+    .price-amount {
+      font-size: 32px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      margin-bottom: 4px;
+    }
+    .price-amount .small {
+      font-size: 16px;
+      font-weight: 500;
+      color: var(--text-muted);
+    }
+    .price-sub {
+      color: var(--text-muted);
+      font-size: 14px;
+      margin-bottom: 24px;
+    }
+    .price-list {
+      list-style: none;
+      margin-bottom: 28px;
+      flex-grow: 1;
+    }
+    .price-list li {
+      padding: 8px 0;
+      font-size: 15px;
+      color: var(--text);
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+    }
+    .price-list li::before {
+      content: "";
+      flex-shrink: 0;
+      width: 18px;
+      height: 18px;
+      margin-top: 3px;
+      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='%236366F1'><path d='M16.7 5.3a1 1 0 010 1.4l-7.4 7.4a1 1 0 01-1.4 0l-3.6-3.6a1 1 0 111.4-1.4l2.9 2.9 6.7-6.7a1 1 0 011.4 0z'/></svg>");
+      background-repeat: no-repeat;
+      background-size: contain;
+    }
+    .btn-secondary {
+      display: block;
+      text-align: center;
+      padding: 14px 24px;
+      border-radius: var(--radius);
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 15px;
+      border: 1.5px solid var(--primary);
+      color: var(--primary);
+      background: #fff;
+      transition: background 0.2s, color 0.2s;
+    }
+    .btn-secondary:hover {
+      background: var(--primary);
+      color: #fff;
+    }
+    .price-card.featured .btn-secondary {
+      background: var(--primary);
+      color: #fff;
+    }
+    .price-card.featured .btn-secondary:hover {
+      background: var(--primary-dark);
+      border-color: var(--primary-dark);
+    }
+
+    /* ── Contact form ─────────────────────────────────────────────── */
+    .contact-wrap {
+      max-width: 560px;
+      margin: 0 auto;
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 40px;
+      box-shadow: var(--shadow-md);
+    }
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+    .field { margin-bottom: 16px; }
+    .field label {
+      display: block;
+      font-size: 14px;
+      font-weight: 500;
+      margin-bottom: 6px;
+      color: var(--text);
+    }
+    .field input,
+    .field textarea {
+      width: 100%;
+      padding: 12px 14px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      font-family: inherit;
+      font-size: 15px;
+      background: #fff;
+      color: var(--text);
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .field input:focus,
+    .field textarea:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+    }
+    .field textarea {
+      resize: vertical;
+      min-height: 110px;
+    }
+    .form-submit {
+      width: 100%;
+      padding: 14px;
+      border-radius: var(--radius);
+      background: var(--primary);
+      color: #fff;
+      border: none;
+      font-weight: 600;
+      font-size: 16px;
+      cursor: pointer;
+      transition: background 0.2s;
+      font-family: inherit;
+    }
+    .form-submit:hover { background: var(--primary-dark); }
+    .form-submit:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+    .form-msg {
+      margin-top: 16px;
+      padding: 12px 14px;
+      border-radius: var(--radius);
+      font-size: 14px;
+      display: none;
+    }
+    .form-msg.success {
+      display: block;
+      background: #ECFDF5;
+      color: #065F46;
+      border: 1px solid #A7F3D0;
+    }
+    .form-msg.error {
+      display: block;
+      background: #FEF2F2;
+      color: #991B1B;
+      border: 1px solid #FECACA;
+    }
+
+    /* ── Footer ──────────────────────────────────────────────────── */
+    footer {
+      padding: 32px 0;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 14px;
+      border-top: 1px solid var(--border);
+    }
+
+    /* ── Responsive ──────────────────────────────────────────────── */
+    @media (max-width: 860px) {
+      .grid-3, .steps, .pricing-grid {
+        grid-template-columns: 1fr;
+      }
+      .price-card.featured { transform: none; }
+      section { padding: 64px 0; }
+      .hero { padding: 64px 0 56px; }
+      .form-row { grid-template-columns: 1fr; }
+      .contact-wrap { padding: 28px 22px; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ── Nav ──────────────────────────────────────────────────── -->
+  <nav class="nav">
+    <div class="container nav-inner">
+      <a href="#" class="logo"><span class="logo-dot"></span>SupportBot Studio</a>
+      <a href="#contact" class="nav-cta">Get a Demo</a>
+    </div>
+  </nav>
+
+  <!-- ── Hero ─────────────────────────────────────────────────── -->
+  <section class="hero">
+    <div class="container">
+      <div class="hero-badge"><span class="pulse"></span> Powered by Claude AI</div>
+      <h1>AI Customer Support<br /><span class="accent">for Your Business</span></h1>
+      <p>Set up in minutes. Works on any website. Powered by Claude AI.</p>
+      <a href="#contact" class="btn-primary">Get a Free Demo</a>
+    </div>
+  </section>
+
+  <!-- ── Features ─────────────────────────────────────────────── -->
+  <section id="features">
+    <div class="container">
+      <div class="section-head">
+        <span class="eyebrow">What it does</span>
+        <h2>Customer support that runs itself</h2>
+        <p>Three things every business needs — handled automatically.</p>
+      </div>
+      <div class="grid-3">
+        <div class="card">
+          <div class="card-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          </div>
+          <h3>Answers questions 24/7</h3>
+          <p>Your AI agent replies to customer questions instantly, day or night, in their own language.</p>
+        </div>
+        <div class="card">
+          <div class="card-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          </div>
+          <h3>Remembers your customers</h3>
+          <p>Returning visitors are recognised by name and past conversations — like a staff member who never forgets.</p>
+        </div>
+        <div class="card">
+          <div class="card-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          </div>
+          <h3>Escalates when it matters</h3>
+          <p>Tricky cases get pushed to you on WhatsApp or Telegram instantly — so you only step in when needed.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── How it works ─────────────────────────────────────────── -->
+  <section class="alt" id="how">
+    <div class="container">
+      <div class="section-head">
+        <span class="eyebrow">How it works</span>
+        <h2>Live in days, not months</h2>
+        <p>You don't lift a finger on the technical setup.</p>
+      </div>
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">1</div>
+          <h3>We set up your AI agent</h3>
+          <p>Branded to your business, trained on your products, services and tone of voice.</p>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <h3>Add one line of code</h3>
+          <p>Drop a single script tag onto your website. That's the entire integration.</p>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <h3>Focus on growth</h3>
+          <p>Your AI handles customers around the clock while you focus on building the business.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Audience ─────────────────────────────────────────────── -->
+  <section id="who">
+    <div class="container">
+      <div class="section-head">
+        <span class="eyebrow">Who it's for</span>
+        <h2>Built for any business with repeat customer questions</h2>
+        <p>If your customers keep asking the same things, SupportBot Studio is for you.</p>
+      </div>
+      <div class="audience">
+        <span class="chip">E-commerce</span>
+        <span class="chip">SaaS</span>
+        <span class="chip">Service businesses</span>
+        <span class="chip">Logistics</span>
+        <span class="chip">Hospitality</span>
+        <span class="chip">Healthcare</span>
+        <span class="chip">Legal firms</span>
+        <span class="chip">Education</span>
+        <span class="chip">Real estate</span>
+        <span class="chip">Agencies</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Pricing ──────────────────────────────────────────────── -->
+  <section class="alt" id="pricing">
+    <div class="container">
+      <div class="section-head">
+        <span class="eyebrow">Pricing</span>
+        <h2>Simple plans that scale with you</h2>
+        <p>One-time setup, then a flat monthly fee. No surprises.</p>
+      </div>
+      <div class="pricing-grid">
+
+        <div class="price-card">
+          <div class="price-tier">Starter</div>
+          <div class="price-amount">$99 <span class="small">setup</span></div>
+          <div class="price-sub">+ $49/month</div>
+          <ul class="price-list">
+            <li>1 AI agent</li>
+            <li>Up to 500 conversations / month</li>
+            <li>Email escalation</li>
+            <li>Basic analytics</li>
+            <li>5-day setup</li>
+          </ul>
+          <a href="#contact" class="btn-secondary">Choose Starter</a>
+        </div>
+
+        <div class="price-card featured">
+          <div class="price-badge">MOST POPULAR</div>
+          <div class="price-tier">Growth</div>
+          <div class="price-amount">$199 <span class="small">setup</span></div>
+          <div class="price-sub">+ $99/month</div>
+          <ul class="price-list">
+            <li>1 AI agent</li>
+            <li>Up to 2,000 conversations / month</li>
+            <li>Email + Telegram escalation</li>
+            <li>Full analytics + reports</li>
+            <li>Brand Voice DNA</li>
+            <li>3-day setup</li>
+          </ul>
+          <a href="#contact" class="btn-secondary">Choose Growth</a>
+        </div>
+
+        <div class="price-card">
+          <div class="price-tier">Enterprise</div>
+          <div class="price-amount">Custom</div>
+          <div class="price-sub">Tailored to your scale</div>
+          <ul class="price-list">
+            <li>Multiple AI agents</li>
+            <li>Unlimited conversations</li>
+            <li>All features</li>
+            <li>Priority support</li>
+            <li>Custom integrations</li>
+            <li>Dedicated onboarding</li>
+          </ul>
+          <a href="#contact" class="btn-secondary">Contact Sales</a>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Contact ──────────────────────────────────────────────── -->
+  <section id="contact">
+    <div class="container">
+      <div class="section-head">
+        <span class="eyebrow">Get a free demo</span>
+        <h2>See it running on your website</h2>
+        <p>Tell us about your business — we'll set up a live demo within 48 hours.</p>
+      </div>
+
+      <div class="contact-wrap">
+        <form id="contactForm" novalidate>
+          <div class="form-row">
+            <div class="field">
+              <label for="name">Your name</label>
+              <input type="text" id="name" name="name" required autocomplete="name" />
+            </div>
+            <div class="field">
+              <label for="business">Business name</label>
+              <input type="text" id="business" name="business" required autocomplete="organization" />
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="email">Email</label>
+            <input type="email" id="email" name="email" required autocomplete="email" />
+          </div>
+
+          <div class="field">
+            <label for="whatsapp">WhatsApp number</label>
+            <input type="tel" id="whatsapp" name="whatsapp" placeholder="+234 ..." autocomplete="tel" />
+          </div>
+
+          <div class="field">
+            <label for="message">Message</label>
+            <textarea id="message" name="message" placeholder="Tell us about your business and what you'd like the AI to handle."></textarea>
+          </div>
+
+          <button type="submit" class="form-submit" id="submitBtn">Send message</button>
+          <div class="form-msg" id="formMsg"></div>
+        </form>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Footer ───────────────────────────────────────────────── -->
+  <footer>
+    <div class="container">
+      &copy; <span id="year"></span> SupportBot Studio. All rights reserved.
+    </div>
+  </footer>
+
+  <!-- EmailJS SDK -->
+  <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+
+  <script>
+    // ── Footer year ───────────────────────────────────────────
+    document.getElementById('year').textContent = new Date().getFullYear();
+
+    // ── EmailJS config (REPLACE BEFORE GOING LIVE) ───────────
+    // Get these at https://www.emailjs.com -> Account / Email Services / Email Templates
+    const EMAILJS_PUBLIC_KEY = 'YOUR_PUBLIC_KEY';      // e.g. "abc123XYZ"
+    const EMAILJS_SERVICE_ID = 'YOUR_SERVICE_ID';      // e.g. "service_xxxx"
+    const EMAILJS_TEMPLATE_ID = 'YOUR_TEMPLATE_ID';    // e.g. "template_xxxx"
+
+    if (window.emailjs && EMAILJS_PUBLIC_KEY && !EMAILJS_PUBLIC_KEY.startsWith('YOUR_')) {
+      emailjs.init({ publicKey: EMAILJS_PUBLIC_KEY });
+    }
+
+    // ── Form handler ─────────────────────────────────────────
+    const form = document.getElementById('contactForm');
+    const submitBtn = document.getElementById('submitBtn');
+    const msgEl = document.getElementById('formMsg');
+
+    function showMsg(text, type) {
+      msgEl.textContent = text;
+      msgEl.className = 'form-msg ' + type;
+    }
+
+    form.addEventListener('submit', async function (e) {
+      e.preventDefault();
+      msgEl.className = 'form-msg';
+      msgEl.textContent = '';
+
+      const name = form.name.value.trim();
+      const business = form.business.value.trim();
+      const email = form.email.value.trim();
+      const whatsapp = form.whatsapp.value.trim();
+      const message = form.message.value.trim();
+
+      if (!name || !business || !email) {
+        showMsg('Please fill in your name, business and email.', 'error');
+        return;
+      }
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Sending...';
+
+      const params = {
+        from_name: name,
+        business_name: business,
+        from_email: email,
+        whatsapp: whatsapp || '(not provided)',
+        message: message || '(no message)'
+      };
+
+      try {
+        if (!window.emailjs || EMAILJS_PUBLIC_KEY.startsWith('YOUR_')) {
+          throw new Error('EmailJS not configured');
+        }
+        await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, params);
+        showMsg('Thanks — we got it. Kay will reply within 24 hours.', 'success');
+        form.reset();
+      } catch (err) {
+        showMsg('Could not send right now. Please email us directly at atuorahkingsley@gmail.com.', 'error');
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Send message';
+      }
+    });
+  </script>
+</body>
+</html>
