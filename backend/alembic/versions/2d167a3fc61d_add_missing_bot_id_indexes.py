@@ -53,9 +53,16 @@ _INDEXES = [
 
 
 def upgrade() -> None:
-    """Create the missing bot_id indexes."""
+    """Create the missing bot_id indexes.
+
+    if_not_exists=True: when migrating to a freshly-provisioned Postgres
+    (e.g. Supabase), the baseline schema sometimes already carries these
+    indexes — bare CREATE INDEX then fails with DuplicateTable. The IF
+    NOT EXISTS guard makes the migration idempotent against either start
+    state. Both Postgres and SQLite support the clause natively.
+    """
     for index_name, table_name in _INDEXES:
-        op.create_index(index_name, table_name, ['bot_id'], unique=False)
+        op.create_index(index_name, table_name, ['bot_id'], unique=False, if_not_exists=True)
 
 
 def downgrade() -> None:

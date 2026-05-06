@@ -14,10 +14,23 @@ from backend.config import settings
 # Ensure data directory exists
 os.makedirs("./data", exist_ok=True)
 
-engine = create_engine(
-    settings.database_url,
-    connect_args={"check_same_thread": False}
-)
+# Engine creation branches on dialect:
+#   • SQLite: needs check_same_thread=False because FastAPI shares the
+#     connection across threads (SQLite's default rejects this).
+#   • Postgres (incl. Supabase Transaction-mode pooler on :6543):
+#     pool_pre_ping=True transparently retries a dropped connection
+#     (PgBouncer + Render both reap idle conns); pool_recycle=300 keeps
+#     us under the typical PgBouncer idle-timeout. SQLAlchemy's default
+#     pool_size=5 / max_overflow=10 is fine — PgBouncer is pooling the
+#     real Postgres connections behind us.
+def _build_engine():
+    db_url = settings.database_url
+    if db_url.startswith("sqlite"):
+        return create_engine(db_url, connect_args={"check_same_thread": False})
+    return create_engine(db_url, pool_pre_ping=True, pool_recycle=300)
+
+
+engine = _build_engine()
 
 
 # ── SQLite FK enforcement ─────────────────────────────────────────────────────

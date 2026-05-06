@@ -11,8 +11,12 @@ services:
       mountPath: /data
       sizeGB: 1
     envVars:
+      # Set in Render dashboard → Environment. Use the Supabase
+      # "Transaction" pooler URL (port 6543), not the direct :5432 URL —
+      # Render workers are short-lived and pgBouncer-friendly.
+      # Format: postgresql://postgres.<ref>:<pwd>@<region>.pooler.supabase.com:6543/postgres
       - key: DATABASE_URL
-        value: sqlite:////data/supportbot.db
+        sync: false
       - key: APP_URL
         value: https://supportbot-studio.onrender.com
       - key: PYTHON_VERSION

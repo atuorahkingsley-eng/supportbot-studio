@@ -19,3 +19,8 @@ slowapi>=0.1.9
 bcrypt==4.0.1
 alembic>=1.13.0
 structlog>=24.1.0
+# Postgres driver — needed when DATABASE_URL is a postgresql:// URL
+# (Supabase, Render Postgres, etc.). -binary ships precompiled wheels so
+# Render's build step doesn't need libpq dev headers. SQLite-only deploys
+# don't import this; it's a no-op cost.
+psycopg2-binary>=2.9.0

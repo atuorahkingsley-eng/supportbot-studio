@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, extract
 from typing import Optional, List
 from pydantic import BaseModel
 import io
@@ -138,10 +138,11 @@ def get_hourly(
 ):
     # Pre-fix this loaded every user message into memory and binned by
     # hour in Python — fine on a fresh tenant, a memory bomb on one with
-    # 100K+ messages. Push the GROUP BY into SQLite via strftime so the
-    # DB returns at most 24 rows. SQLite's strftime returns zero-padded
-    # hours ('00'..'23'); coerce to int for the response shape.
-    hour_expr = func.strftime("%H", Message.created_at)
+    # 100K+ messages. Push the GROUP BY into the DB so it returns at most
+    # 24 rows. extract('hour', col) is portable: SQLAlchemy emits
+    # EXTRACT(hour FROM col) on Postgres and CAST(STRFTIME('%H', col) AS
+    # INTEGER) on SQLite — same INTEGER 0..23 result either way.
+    hour_expr = extract("hour", Message.created_at)
     rows = db.query(
         hour_expr.label("hour"),
         func.count(Message.id).label("count"),
