@@ -4,6 +4,7 @@ Pure functions only — no database imports at module level to avoid circular im
 FastAPI dependency functions use lazy Tenant imports via the db session.
 """
 import re
+import uuid
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -52,8 +53,14 @@ def validate_password_strength(password: str) -> Optional[str]:
 
 
 def create_token(data: dict, expires_hours: int = TOKEN_EXPIRE_HOURS) -> str:
+    """Issue a JWT with a unique `jti` claim.
+
+    The jti (JWT ID) is what the RevokedToken denylist keys on for
+    early revocation on logout. Existing payload keys (role, bot_id,
+    username, …) are preserved verbatim.
+    """
     expire = datetime.utcnow() + timedelta(hours=expires_hours)
-    payload = {**data, "exp": expire}
+    payload = {**data, "exp": expire, "jti": uuid.uuid4().hex}
     return jwt.encode(payload, settings.jwt_secret_key, algorithm=ALGORITHM)
 
 
@@ -62,6 +69,19 @@ def decode_token(token: str) -> Optional[dict]:
         return jwt.decode(token, settings.jwt_secret_key, algorithms=[ALGORITHM])
     except JWTError:
         return None
+
+
+def is_token_revoked(jti: Optional[str], db: Session) -> bool:
+    """True if the given jti is on the revocation denylist.
+
+    Tokens issued before this code shipped have no jti — those return
+    False (never revoked) until they expire naturally. New tokens always
+    carry a jti, so logout from this point forward is fully revocable.
+    """
+    if not jti:
+        return False
+    from backend.database import RevokedToken  # lazy import
+    return db.query(RevokedToken.id).filter(RevokedToken.jti == jti).first() is not None
 
 
 # ── FastAPI dependency functions ──────────────────────────────────────────────
@@ -83,6 +103,10 @@ async def get_current_client(request: Request, db: Session = Depends(get_db)):
     payload = decode_token(token)
     if not payload or payload.get("role") != "client":
         raise HTTPException(status_code=401, detail="Invalid token")
+    # Early-revocation check — the token is cryptographically valid but
+    # the user logged out, so reject it before granting access.
+    if is_token_revoked(payload.get("jti"), db):
+        raise HTTPException(status_code=401, detail="Token has been revoked")
 
     tenant = db.query(Tenant).filter(Tenant.bot_id == payload["bot_id"]).first()
     if not tenant or not tenant.is_active:
@@ -107,6 +131,10 @@ async def get_super_admin(request: Request, db: Session = Depends(get_db)):
     payload = decode_token(token)
     if not payload or payload.get("role") != "super_admin":
         raise HTTPException(status_code=401, detail="Not authorized")
+    # Early-revocation check — same denylist as tenant tokens. Super-admin
+    # logout must kill the session immediately, not wait for natural expiry.
+    if is_token_revoked(payload.get("jti"), db):
+        raise HTTPException(status_code=401, detail="Token has been revoked")
 
     admin = db.query(SuperAdmin).filter(
         SuperAdmin.username == payload.get("username")

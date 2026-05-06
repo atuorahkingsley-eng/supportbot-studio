@@ -83,6 +83,21 @@ class SuperAdmin(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class RevokedToken(Base):
+    """JWT denylist for early revocation (logout, forced sign-out).
+
+    Tokens still expire naturally via the `exp` claim; this table just
+    kills them sooner. The `jti` column carries the JWT's `jti` claim —
+    a uuid4 hex set at issue time. UNIQUE on jti because re-revoking the
+    same token is a no-op.
+    """
+    __tablename__ = "revoked_tokens"
+
+    id = Column(Integer, primary_key=True)
+    jti = Column(String, unique=True, nullable=False, index=True)
+    revoked_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
 class UsageLog(Base):
     __tablename__ = "usage_logs"
 
@@ -356,8 +371,19 @@ def get_db():
         db.close()
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# LEGACY: This shim predates Alembic. DO NOT add new columns here.
+# Write a proper Alembic migration under backend/alembic/versions/ instead.
+# This function will be removed once all legacy columns below are confirmed
+# present in the baseline migration. Kept for now as a safety net for
+# upgrading older deployments where the columns might not yet exist.
+# ─────────────────────────────────────────────────────────────────────────────
 def _migrate_columns():
-    """Safely add new columns to existing tables (idempotent)."""
+    """Safely add new columns to existing tables (idempotent).
+
+    LEGACY — see block comment above. Do not add new entries to the
+    migrations list here; write an Alembic migration instead.
+    """
     migrations = [
         # Phase 2 (differentiators)
         ("conversations", "primary_language TEXT"),

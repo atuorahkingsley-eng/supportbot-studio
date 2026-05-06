@@ -160,7 +160,14 @@ async def send_report():
 
 
 def start_scheduler():
-    scheduler.add_job(send_report, "cron", hour=8, minute=0)
+    # id + replace_existing protect against duplicate registration on
+    # restart loops or repeated lifespan-startup calls. timezone="UTC" is
+    # set on the scheduler itself (see AsyncIOScheduler config above).
+    scheduler.add_job(
+        send_report, "cron",
+        hour=8, minute=0,
+        id="send_report", replace_existing=True,
+    )
     scheduler.start()
 
 

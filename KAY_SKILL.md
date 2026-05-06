@@ -198,8 +198,8 @@ These rules document what the SupportBot Studio v2 codebase *actually does* toda
 
 ### Logging
 
-- **structlog is the target, not the current state.** Only `backend/routers/brand_voice.py` and `backend/services/brand_voice_analyzer.py` use it. Every other module has zero logging. New modules should add structlog at request entry and on error exit.
-- **`print()` is allowed in two places only:** `backend/config.py` (boot-guard messages that must run before any logger is configured) and APScheduler jobs in `backend/main.py`. Anywhere else, use structlog.
+- **structlog is used in brand_voice services only.** Only `backend/routers/brand_voice.py` and `backend/services/brand_voice_analyzer.py` use it. **All other modules: raise exceptions, do not log.** Errors that need operator visibility get persisted to the `ErrorLog` table via `_log_notification_error` (pattern in `backend/routers/escalate.py:31-44`) — that's the project's logging substitute. Do NOT backfill structlog across other modules; the `ErrorLog` row is the durable record.
+- **`print()` is permitted only in `backend/config.py` and `backend/main.py`** for boot-time operational messages (boot guard, scheduler-job status). Anywhere else, raise an exception or write to `ErrorLog`.
 
 ### Error Handling
 

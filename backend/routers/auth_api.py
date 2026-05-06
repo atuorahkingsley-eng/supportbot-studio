@@ -90,7 +90,40 @@ def client_login(request: Request, data: ClientLoginRequest, response: Response,
 # ── Logout ─────────────────────────────────────────────────────────────────────
 
 @router.post("/logout")
-def logout(response: Response):
+def logout(request: Request, response: Response, db: Session = Depends(get_db)):
+    """Revoke any presented tokens by jti, then clear cookies.
+
+    Pre-fix this endpoint only deleted cookies — but a JWT copied out before
+    logout (e.g. via dev-tools or stolen by malware) stayed valid until its
+    natural expiry. Now we add the jti to the RevokedToken denylist so the
+    token is rejected on the next request even if it's replayed.
+
+    Decoding is best-effort: a malformed or already-expired token must not
+    fail the logout. We swallow per-token errors so the cookies always clear.
+    Legacy tokens issued before jti shipped have payload['jti'] == None and
+    are skipped (they expire naturally).
+    """
+    from backend.database import RevokedToken  # lazy import — mirrors auth.py
+
+    now = datetime.utcnow()
+    for cookie_name in ("sb_client_token", "sb_super_token"):
+        token = request.cookies.get(cookie_name)
+        if not token:
+            continue
+        try:
+            payload = decode_token(token)
+            jti = payload.get("jti") if payload else None
+            if jti:
+                db.add(RevokedToken(jti=jti, revoked_at=now))
+        except Exception:
+            # Best-effort: a corrupted token must not block logout.
+            pass
+    try:
+        db.commit()
+    except Exception:
+        # UNIQUE collision (re-revoking same jti) is a no-op by design.
+        db.rollback()
+
     response.delete_cookie("sb_client_token")
     response.delete_cookie("sb_super_token")
     return {"ok": True}

@@ -50,7 +50,23 @@ function DiscountCard({ action, accent }) {
   )
 }
 
+// Validate that an external URL is http(s) before rendering as <a href>.
+// Anything else (javascript:, data:, file:, etc.) returns null so the
+// caller drops the link silently — audit explicitly says no visible
+// error. The booking_url is tenant-controlled (set in SalesConfig), so
+// it crosses a trust boundary into customer browsers.
+function safeHttpUrl(raw) {
+  if (!raw || typeof raw !== 'string') return null
+  try {
+    const u = new URL(raw)
+    return (u.protocol === 'http:' || u.protocol === 'https:') ? raw : null
+  } catch {
+    return null
+  }
+}
+
 function DemoCard({ action, accent }) {
+  const safeUrl = safeHttpUrl(action.booking_url)
   return (
     <div style={{
       background: 'linear-gradient(135deg, #EFF6FF, #DBEAFE)',
@@ -59,15 +75,17 @@ function DemoCard({ action, accent }) {
       <div style={{ fontSize: 13, fontWeight: 600, color: '#1E40AF', marginBottom: 8 }}>
         📅 {action.message}
       </div>
-      <a href={action.booking_url} target="_blank" rel="noopener noreferrer"
-        style={{
-          display: 'inline-block', background: accent, color: '#fff', border: 'none',
-          borderRadius: 6, padding: '6px 14px', fontSize: 13, cursor: 'pointer',
-          fontWeight: 500, textDecoration: 'none',
-        }}
-      >
-        Book a Demo →
-      </a>
+      {safeUrl && (
+        <a href={safeUrl} target="_blank" rel="noopener noreferrer"
+          style={{
+            display: 'inline-block', background: accent, color: '#fff', border: 'none',
+            borderRadius: 6, padding: '6px 14px', fontSize: 13, cursor: 'pointer',
+            fontWeight: 500, textDecoration: 'none',
+          }}
+        >
+          Book a Demo →
+        </a>
+      )}
     </div>
   )
 }
