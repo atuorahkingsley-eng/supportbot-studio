@@ -13,6 +13,8 @@ from typing import Optional, List
 from backend.database import (
     get_db, Tenant, SuperAdmin, BotConfig, FAQEntry, Conversation,
     Message, Lead, UsageLog, ErrorLog, generate_bot_id, generate_api_key,
+    WebhookConfig, ReportSchedule, Visitor, VisitorConversation,
+    SalesConfig, BrandVoice, PendingEscalation,
 )
 from backend.services.auth import hash_password, get_super_admin, validate_password_strength
 
@@ -203,6 +205,76 @@ def deactivate_tenant(
     tenant.is_active = False
     db.commit()
     return {"ok": True, "bot_id": bot_id, "is_active": False}
+
+
+# ── Hard delete (permanent, cascades through all tenant-scoped tables) ────────
+
+def _delete_tenant_and_all_data(db: Session, bot_id: str) -> int:
+    """Cascade-delete a tenant and every row keyed to bot_id.
+
+    Manual cascade because no FK exists on bot_id columns (they're plain
+    Strings, not declared as ForeignKey to tenants.bot_id). The TWO real FKs
+    in the schema are messages.conversation_id → conversations.id and
+    visitor_conversations.conversation_id → conversations.id (no ON DELETE
+    clause). With PRAGMA foreign_keys=ON enabled (database.py:42-47), those
+    children MUST be deleted before conversations or the parent DELETE
+    will FK-violate.
+
+    Returns the total number of rows deleted across all tables.
+    """
+    deleted = 0
+    # Phase 1: children of Conversation (FK enforcement).
+    deleted += db.query(Message).filter(Message.bot_id == bot_id).delete(synchronize_session=False)
+    deleted += db.query(VisitorConversation).filter(VisitorConversation.bot_id == bot_id).delete(synchronize_session=False)
+    # Phase 2: Conversation itself.
+    deleted += db.query(Conversation).filter(Conversation.bot_id == bot_id).delete(synchronize_session=False)
+    # Phase 3: every other tenant-scoped table — no inter-deps, order is arbitrary.
+    for model in (
+        BotConfig, FAQEntry, WebhookConfig, ReportSchedule,
+        Visitor, SalesConfig, Lead, BrandVoice,
+        ErrorLog, PendingEscalation, UsageLog,
+    ):
+        deleted += db.query(model).filter(model.bot_id == bot_id).delete(synchronize_session=False)
+    # Phase 4: the tenant row itself.
+    deleted += db.query(Tenant).filter(Tenant.bot_id == bot_id).delete(synchronize_session=False)
+    return deleted
+
+
+@router.delete("/tenants/{bot_id}/permanent")
+def hard_delete_tenant(
+    bot_id: str,
+    db: Session = Depends(get_db),
+    _: dict = Depends(get_super_admin),
+):
+    """Hard delete — removes the tenant and ALL associated rows.
+
+    Distinct from `DELETE /api/admin/tenants/{bot_id}` (soft delete) — that
+    one preserves data and just sets is_active=False. This endpoint is
+    irreversible; the `/permanent` suffix makes destructive intent explicit
+    in the URL and avoids silently breaking the soft-delete contract
+    documented in SUPPORTBOT_MULTITENANT_SPEC.md.
+    """
+    tenant = db.query(Tenant).filter(Tenant.bot_id == bot_id).first()
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    # Capture identifiers before the row is gone — used in the response.
+    company_name = tenant.company_name
+
+    try:
+        rows_deleted = _delete_tenant_and_all_data(db, bot_id)
+        db.commit()
+    except Exception as e:
+        # Single transaction — partial deletes never persist.
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Delete failed: {str(e)[:200]}")
+
+    return {
+        "ok": True,
+        "bot_id": bot_id,
+        "company_name": company_name,
+        "rows_deleted": rows_deleted,
+        "message": f"Tenant '{company_name}' and all associated data permanently deleted.",
+    }
 
 
 @router.post("/tenants/{bot_id}/reset-password")

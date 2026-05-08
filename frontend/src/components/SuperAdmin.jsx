@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useContext } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { AuthContext } from '../App.jsx'
+import { AuthContext, ToastContext } from '../App.jsx'
 
 // ── Super Admin Login ──────────────────────────────────────────────────────────
 function SuperAdminLogin({ onLogin }) {
@@ -56,7 +56,7 @@ function SuperAdminLogin({ onLogin }) {
 }
 
 // ── Tenant Row ─────────────────────────────────────────────────────────────────
-function TenantRow({ t, onEdit, onToggle, onResetPassword }) {
+function TenantRow({ t, onEdit, onToggle, onResetPassword, onDelete }) {
   const usagePct = t.monthly_message_limit > 0 ? Math.min(100, Math.round(t.messages_used_this_month / t.monthly_message_limit * 100)) : 0
   return (
     <tr style={{ borderBottom: '1px solid var(--border)' }}>
@@ -84,9 +84,50 @@ function TenantRow({ t, onEdit, onToggle, onResetPassword }) {
           <button className="btn btn-secondary" style={{ padding: '3px 8px', fontSize: 11, color: t.is_active ? '#DC2626' : '#16A34A' }} onClick={() => onToggle(t)}>
             {t.is_active ? 'Disable' : 'Enable'}
           </button>
+          <button className="btn btn-danger" style={{ padding: '3px 8px', fontSize: 11 }} onClick={() => onDelete(t)}>
+            Delete
+          </button>
         </div>
       </td>
     </tr>
+  )
+}
+
+// ── Confirm Delete Modal ───────────────────────────────────────────────────────
+// Hard delete is irreversible — modal forces an explicit confirm click before
+// the DELETE fires. Toast feedback is owned by the parent dashboard so the
+// modal can close cleanly on either success or failure.
+function ConfirmDeleteModal({ tenant, onClose, onConfirmed }) {
+  const [submitting, setSubmitting] = useState(false)
+
+  const handleConfirm = async () => {
+    setSubmitting(true)
+    try {
+      await onConfirmed(tenant)
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 24 }}>
+      <div className="card" style={{ maxWidth: 440, width: '100%' }}>
+        <h2 className="section-title" style={{ color: '#DC2626' }}>⚠️ Permanent Deletion</h2>
+        <p style={{ fontSize: 14, marginBottom: 8 }}>
+          Are you sure you want to delete <strong>{tenant.company_name}</strong>?
+        </p>
+        <p style={{ color: 'var(--text-secondary)', fontSize: 13, marginBottom: 20 }}>
+          This will permanently remove all their data — conversations, messages, leads,
+          FAQs, webhooks, and visitor history. This cannot be undone.
+        </p>
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+          <button className="btn btn-secondary" onClick={onClose} disabled={submitting}>Cancel</button>
+          <button className="btn btn-danger" onClick={handleConfirm} disabled={submitting}>
+            {submitting ? 'Deleting…' : 'Delete'}
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -266,6 +307,7 @@ function ResetPasswordModal({ tenant, onClose, onDone }) {
 
 // ── Super Admin Dashboard ──────────────────────────────────────────────────────
 function SuperAdminDashboard({ onLogout }) {
+  const addToast = useContext(ToastContext)
   const [tab, setTab] = useState('overview')
   const [overview, setOverview] = useState(null)
   const [tenants, setTenants] = useState([])
@@ -279,6 +321,7 @@ function SuperAdminDashboard({ onLogout }) {
   const [showModal, setShowModal] = useState(false)
   const [editTenant, setEditTenant] = useState(null)
   const [resetPwTenant, setResetPwTenant] = useState(null)
+  const [deleteTenant, setDeleteTenant] = useState(null)
   const [healthLoading, setHealthLoading] = useState(false)
 
   const load = () => {
@@ -311,6 +354,29 @@ function SuperAdminDashboard({ onLogout }) {
   const handleToggle = async (t) => {
     const r = await fetch(`/api/admin/tenants/${t.bot_id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ is_active: !t.is_active }) })
     if (r.ok) load()
+  }
+
+  // Hard-delete a tenant. On success: optimistically drop from local state +
+  // toast. On error: leave the tenant in the list and toast the message.
+  // Modal closes either way; user can re-open to retry on failure.
+  const handleDelete = async (t) => {
+    try {
+      const r = await fetch(`/api/admin/tenants/${t.bot_id}/permanent`, {
+        method: 'DELETE',
+        credentials: 'include',
+      })
+      if (!r.ok) {
+        const data = await r.json().catch(() => ({}))
+        addToast(data.detail || 'Failed to delete tenant', 'error')
+        return
+      }
+      setTenants(prev => prev.filter(x => x.bot_id !== t.bot_id))
+      addToast(`Tenant '${t.company_name}' deleted`, 'success')
+    } catch {
+      addToast('Network error — tenant not deleted', 'error')
+    } finally {
+      setDeleteTenant(null)
+    }
   }
 
   const filtered = tenants.filter(t => !search || t.company_name.toLowerCase().includes(search.toLowerCase()) || t.bot_id.includes(search.toLowerCase()))
@@ -405,6 +471,7 @@ function SuperAdminDashboard({ onLogout }) {
                         onEdit={t => { setEditTenant(t); setShowModal(true) }}
                         onToggle={handleToggle}
                         onResetPassword={t => setResetPwTenant(t)}
+                        onDelete={t => setDeleteTenant(t)}
                       />
                     ))}
                   </tbody>
@@ -636,6 +703,14 @@ function SuperAdminDashboard({ onLogout }) {
           tenant={resetPwTenant}
           onClose={() => setResetPwTenant(null)}
           onDone={() => setResetPwTenant(null)}
+        />
+      )}
+
+      {deleteTenant && (
+        <ConfirmDeleteModal
+          tenant={deleteTenant}
+          onClose={() => setDeleteTenant(null)}
+          onConfirmed={handleDelete}
         />
       )}
     </div>

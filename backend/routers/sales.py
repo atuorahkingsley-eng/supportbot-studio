@@ -5,12 +5,76 @@ from sqlalchemy import func
 from pydantic import BaseModel
 from typing import Optional, List
 
-from backend.database import get_db, SalesConfig, Lead, Tenant
+from backend.database import get_db, SalesConfig, Lead, Tenant, WebhookConfig, ErrorLog
 from backend.services.auth import get_current_client
 from backend.services.rate_limit import limiter, check_bot_id_rate_limit
+from backend.services.webhook_sender import dispatch_webhook
 from slowapi.util import get_remote_address
 
 router = APIRouter(prefix="/api/sales", tags=["sales"])
+
+
+# ── Webhook fan-out ───────────────────────────────────────────────────────────
+
+def _log_notification_error(db: Session, bot_id: str, channel: str, error: Exception):
+    """Persist a failed webhook attempt to ErrorLog. Best-effort — must not raise.
+
+    Mirrors the helper in backend/routers/escalate.py:32-45 — kept module-local
+    rather than extracted to avoid a cross-router import for a 12-line helper.
+    """
+    try:
+        error_log = ErrorLog(
+            bot_id=bot_id,
+            error_type="notification_error",
+            error_message=f"{channel}: {str(error)[:200]}",
+            endpoint="/api/sales",
+            status="failed",
+        )
+        db.add(error_log)
+        db.commit()
+    except Exception:
+        pass
+
+
+async def _fire_lead_captured_webhooks(db: Session, bot_id: str, lead: Lead) -> None:
+    """Dispatch a `lead_captured` event to every enabled webhook for this tenant.
+
+    Fan-out pattern mirrors backend/routers/escalate.py:125-151 verbatim — each
+    webhook gets an isolated try/except so one failure does not abort the others;
+    per-webhook errors land in ErrorLog rather than bubbling to the request.
+
+    Subscription gate: `notify_on == "all"`. Custom-https webhooks created via
+    the new UI are forced to notify_on='all', so they match. Legacy slack/discord
+    webhooks with notify_on='all' will also receive these — they explicitly opted
+    into "all messages" so this matches the contract.
+    """
+    webhooks = db.query(WebhookConfig).filter(
+        WebhookConfig.bot_id == bot_id,
+        WebhookConfig.enabled == True,
+        WebhookConfig.notify_on == "all",
+    ).all()
+    if not webhooks:
+        return
+
+    text = (
+        f"New lead captured\n"
+        f"Email: {lead.email}\n"
+        f"Name: {lead.name or ''}\n"
+        f"Interest: {lead.interest or ''}\n"
+        f"Source: {lead.source}"
+    )
+    for wh in webhooks:
+        try:
+            await dispatch_webhook(
+                wh.platform,
+                wh.webhook_url,
+                text,
+                secret=wh.secret,
+                events=wh.events,
+                event="lead_captured",
+            )
+        except Exception as e:
+            _log_notification_error(db, bot_id, f"webhook_{wh.platform}", e)
 
 
 # ── SalesConfig ───────────────────────────────────────────────────────────────
@@ -112,7 +176,7 @@ def list_leads(
 
 
 @router.post("/leads/capture", response_model=LeadResponse)
-def capture_lead(
+async def capture_lead(
     data: LeadCreate,
     db: Session = Depends(get_db),
     tenant: Tenant = Depends(get_current_client),
@@ -121,13 +185,18 @@ def capture_lead(
     db.add(lead)
     db.commit()
     db.refresh(lead)
+    # Fire lead_captured webhooks AFTER commit — pattern from escalate.py:140-147.
+    # Awaited inline to match the existing fan-out style; per-webhook failures
+    # are isolated and logged, so a slow receiver delays the response but a
+    # broken one does not break it.
+    await _fire_lead_captured_webhooks(db, tenant.bot_id, lead)
     return lead
 
 
 # Public lead capture (for embed widget)
 @router.post("/leads/capture/public", response_model=LeadResponse)
 @limiter.limit("20/minute")
-def capture_lead_public(
+async def capture_lead_public(
     request: Request,
     data: PublicLeadCreate,
     db: Session = Depends(get_db),
@@ -149,6 +218,8 @@ def capture_lead_public(
     db.add(lead)
     db.commit()
     db.refresh(lead)
+    # Same fan-out as the authenticated endpoint — see capture_lead above.
+    await _fire_lead_captured_webhooks(db, data.bot_id, lead)
     return lead
 
 

@@ -10,12 +10,14 @@ from typing import Optional, Any
 from backend.database import (
     get_db, SessionLocal, Conversation, Message, FAQEntry, BotConfig,
     Visitor, VisitorConversation, SalesConfig, Tenant, BrandVoice,
+    WebhookConfig, ErrorLog,
 )
 from backend.services.auto_reply import find_auto_reply
 from backend.services.ai_chat import get_ai_reply, generate_visitor_summary, build_system_prompt
 from backend.services.auth import get_current_client
 from backend.services.safe_executor import safe_execute
 from backend.services.rate_limit import limiter, check_bot_id_rate_limit
+from backend.services.webhook_sender import dispatch_webhook
 from slowapi.util import get_remote_address
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
@@ -137,6 +139,61 @@ def _build_sales_action(sales_meta: dict, sales_config) -> Optional[dict]:
     if action == "capture_lead":
         return {"type": "capture_lead", "message": "Want a detailed comparison? Enter your email."}
     return None
+
+
+# ── Webhook fan-out ───────────────────────────────────────────────────────────
+
+def _log_notification_error(db: Session, bot_id: str, channel: str, error: Exception):
+    """Persist a failed webhook attempt to ErrorLog. Best-effort — must not raise.
+
+    Mirrors the helper in backend/routers/escalate.py:32-45 and sales.py — kept
+    module-local rather than extracted to avoid a cross-router import for a
+    12-line helper.
+    """
+    try:
+        error_log = ErrorLog(
+            bot_id=bot_id,
+            error_type="notification_error",
+            error_message=f"{channel}: {str(error)[:200]}",
+            endpoint="/api/chat",
+            status="failed",
+        )
+        db.add(error_log)
+        db.commit()
+    except Exception:
+        pass
+
+
+async def _fire_conversation_ended_webhooks(
+    db: Session, bot_id: str, session_id: str, rating: int
+) -> None:
+    """Dispatch a `conversation_ended` event to every enabled webhook for this tenant.
+
+    Fan-out pattern mirrors backend/routers/escalate.py:125-151 — per-webhook
+    try/except, errors land in ErrorLog rather than bubbling. Subscription gate
+    is `notify_on == "all"` — same rationale as sales._fire_lead_captured_webhooks.
+    """
+    webhooks = db.query(WebhookConfig).filter(
+        WebhookConfig.bot_id == bot_id,
+        WebhookConfig.enabled == True,
+        WebhookConfig.notify_on == "all",
+    ).all()
+    if not webhooks:
+        return
+
+    text = f"Conversation ended\nSession: {session_id}\nRating: {rating}/4"
+    for wh in webhooks:
+        try:
+            await dispatch_webhook(
+                wh.platform,
+                wh.webhook_url,
+                text,
+                secret=wh.secret,
+                events=wh.events,
+                event="conversation_ended",
+            )
+        except Exception as e:
+            _log_notification_error(db, bot_id, f"webhook_{wh.platform}", e)
 
 
 async def _summarize_and_update_visitor(visitor_id: str, conversation_id: int):
@@ -547,6 +604,12 @@ async def rate_conversation(
     convo.rating = data.rating
     convo.ended_at = datetime.utcnow()
     db.commit()
+
+    # Fire conversation_ended webhooks. The rating is already persisted above,
+    # so any fan-out failure is non-fatal — _fire_conversation_ended_webhooks
+    # isolates per-webhook exceptions and writes them to ErrorLog. Awaited
+    # inline to match the pattern in escalate.py:140-147.
+    await _fire_conversation_ended_webhooks(db, data.bot_id, data.session_id, data.rating)
 
     link = db.query(VisitorConversation).filter(
         VisitorConversation.conversation_id == convo.id,
