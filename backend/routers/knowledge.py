@@ -1,4 +1,5 @@
 import os
+import uuid
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, BackgroundTasks
 from sqlalchemy.orm import Session
@@ -99,8 +100,10 @@ async def upload_document(
         raise HTTPException(status_code=400, detail=f"Unsupported file type: {ext}")
 
     os.makedirs(settings.upload_dir, exist_ok=True)
-    # Prefix with bot_id to prevent cross-tenant collision
-    save_path = os.path.join(settings.upload_dir, f"{tenant.bot_id}_{safe_filename}")
+    # Use a unique temp filename per upload to prevent concurrent uploads
+    # with the same filename from corrupting each other's data.
+    unique_name = f"{uuid.uuid4()}_{safe_filename}"
+    save_path = os.path.join(settings.upload_dir, unique_name)
 
     # Stream-write with size cap so a 500 MB upload can't OOM the dyno
     total = 0
@@ -122,23 +125,29 @@ async def upload_document(
                 )
             f.write(chunk)
 
-    pairs = await process_document(save_path, ext)
+    try:
+        pairs = await process_document(save_path, ext)
 
-    added = 0
-    for pair in pairs:
-        q = pair.get("q", "").strip()
-        a = pair.get("a", "").strip()
-        if q and a:
-            faq = FAQEntry(
-                bot_id=tenant.bot_id,
-                question=q,
-                answer=a,
-                source="uploaded_doc",
-                source_filename=safe_filename,
-                embedding_text=f"{q} {a}",
-            )
-            db.add(faq)
-            added += 1
+        added = 0
+        for pair in pairs:
+            q = pair.get("q", "").strip()
+            a = pair.get("a", "").strip()
+            if q and a:
+                faq = FAQEntry(
+                    bot_id=tenant.bot_id,
+                    question=q,
+                    answer=a,
+                    source="uploaded_doc",
+                    source_filename=safe_filename,
+                    embedding_text=f"{q} {a}",
+                )
+                db.add(faq)
+                added += 1
 
-    db.commit()
-    return {"ok": True, "extracted": len(pairs), "added": added, "filename": safe_filename, "pairs": pairs}
+        db.commit()
+        return {"ok": True, "extracted": len(pairs), "added": added, "filename": safe_filename, "pairs": pairs}
+    finally:
+        try:
+            os.remove(save_path)
+        except OSError:
+            pass
