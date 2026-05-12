@@ -2,7 +2,11 @@ import json
 import re
 from typing import List
 import anthropic
+import structlog
+from fastapi import HTTPException
 from backend.config import settings
+
+log = structlog.get_logger(__name__)
 
 
 async def process_document(file_path: str, ext: str) -> List[dict]:
@@ -27,6 +31,12 @@ async def process_document(file_path: str, ext: str) -> List[dict]:
 def _extract_pdf(path: str) -> str:
     try:
         import PyPDF2
+    except ImportError:
+        raise HTTPException(
+            status_code=500,
+            detail="PDF processing not available — contact administrator",
+        )
+    try:
         text_parts = []
         with open(path, "rb") as f:
             reader = PyPDF2.PdfReader(f)
@@ -34,21 +44,35 @@ def _extract_pdf(path: str) -> str:
                 text_parts.append(page.extract_text() or "")
         return "\n".join(text_parts)
     except Exception as e:
+        log.warning("pdf_extraction_failed", path=path, error=str(e)[:200])
         return ""
 
 
 def _extract_docx(path: str) -> str:
     try:
         from docx import Document
+    except ImportError:
+        raise HTTPException(
+            status_code=500,
+            detail="DOCX processing not available — contact administrator",
+        )
+    try:
         doc = Document(path)
         return "\n".join(p.text for p in doc.paragraphs if p.text.strip())
     except Exception as e:
+        log.warning("docx_extraction_failed", path=path, error=str(e)[:200])
         return ""
 
 
 def _extract_csv(path: str) -> List[dict]:
     try:
         import pandas as pd
+    except ImportError:
+        raise HTTPException(
+            status_code=500,
+            detail="CSV processing not available — contact administrator",
+        )
+    try:
         df = pd.read_csv(path, quotechar='"', escapechar='\\', on_bad_lines='skip')
         df.columns = [c.lower().strip() for c in df.columns]
         if "question" in df.columns and "answer" in df.columns:
