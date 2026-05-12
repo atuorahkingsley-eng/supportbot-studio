@@ -23,9 +23,29 @@ limiter = Limiter(key_func=get_remote_address)
 #     legitimate users hitting a different bot from the same IP.
 # Per-process memory matches slowapi's default storage (no shared store
 # across workers) — accepted trade-off for zero new dependencies.
+#
+# Memory bounding: _prune_buckets() removes entries whose window has expired,
+# and enforces a hard cap of MAX_BUCKETS to prevent unbounded growth from
+# unique-visitor accumulation over weeks of uptime.
 _buckets: Dict[Tuple[str, str], Deque[float]] = {}
 _buckets_lock = Lock()
 _WINDOW_SECONDS = 60.0
+_MAX_BUCKETS = 10_000
+
+
+def _prune_buckets() -> None:
+    """Remove expired rate limit buckets to bound memory growth."""
+    now = time.time()
+    expired = [k for k, v in _buckets.items() if v and v[-1] < now - _WINDOW_SECONDS]
+    for k in expired:
+        del _buckets[k]
+    if len(_buckets) > _MAX_BUCKETS:
+        oldest = sorted(
+            _buckets.items(),
+            key=lambda x: x[1][-1] if x[1] else 0,
+        )[:len(_buckets) - _MAX_BUCKETS]
+        for k, _ in oldest:
+            del _buckets[k]
 
 
 def check_bot_id_rate_limit(bot_id: str, ip: str, max_per_minute: int) -> bool:
@@ -39,6 +59,7 @@ def check_bot_id_rate_limit(bot_id: str, ip: str, max_per_minute: int) -> bool:
     now = time.time()
     cutoff = now - _WINDOW_SECONDS
     with _buckets_lock:
+        _prune_buckets()
         bucket = _buckets.get(key)
         if bucket is None:
             bucket = deque()
