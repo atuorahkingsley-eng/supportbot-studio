@@ -338,6 +338,16 @@ async def serve_demo():
     return FileResponse(demo_path, media_type="text/html")
 
 
+@app.get("/demo.html")
+async def serve_demo_html():
+    demo_path = os.path.join(_static_dir, "demo.html")
+    return FileResponse(
+        demo_path,
+        media_type="text/html",
+        headers={"Cache-Control": "no-cache, no-store"},
+    )
+
+
 # ── Serve React frontend in production ────────────────────────────────────────
 
 frontend_dist = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist")
@@ -349,7 +359,8 @@ if os.path.isdir(frontend_dist):
         # Don't intercept API routes or widget.js
         if (full_path.startswith("api/")
                 or full_path == "widget.js"
-                or full_path == "demo"):
+                or full_path == "demo"
+                or full_path == "demo.html"):
             from fastapi import HTTPException as FE
             raise FE(status_code=404)
         index = os.path.join(frontend_dist, "index.html")
