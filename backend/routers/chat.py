@@ -198,9 +198,10 @@ async def _fire_conversation_ended_webhooks(
 
 
 async def _summarize_and_update_visitor(visitor_id: str, conversation_id: int):
-    db = SessionLocal()
+    db = None
     bot_id_for_log = ""
     try:
+        db = SessionLocal()
         msgs = db.query(Message).filter(
             Message.conversation_id == conversation_id
         ).order_by(Message.created_at.asc()).all()
@@ -227,15 +228,13 @@ async def _summarize_and_update_visitor(visitor_id: str, conversation_id: int):
                 visitor.notes = result["summary"]
             db.commit()
     except Exception as e:
-        # Background task — a Claude/network/DB failure here must not crash
-        # the rate request that queued it. Log to ErrorLog so the failure
-        # is visible alongside other scheduler-style errors. Pattern mirrors
-        # _retry_pending_escalations in main.py.
-        db.rollback()
-        from backend.routers.escalate import _log_notification_error
-        _log_notification_error(db, bot_id_for_log, "visitor_summary_task", e)
+        if db is not None:
+            db.rollback()
+            from backend.routers.escalate import _log_notification_error
+            _log_notification_error(db, bot_id_for_log, "visitor_summary_task", e)
     finally:
-        db.close()
+        if db is not None:
+            db.close()
 
 
 # ── Phase 7: Fallback chain for AI chat ───────────────────────────────────────
