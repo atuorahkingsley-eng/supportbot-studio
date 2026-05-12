@@ -6,6 +6,9 @@ from typing import Any, Optional
 
 import structlog
 
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+
 from backend.database import (
     get_db, Conversation, Message, WebhookConfig, BotConfig, Tenant,
     PendingEscalation, ErrorLog, Lead,
@@ -311,25 +314,51 @@ async def _do_escalate(
             results[f"webhook_{wh.platform}_{wh.id}"] = False
 
     # ── If ALL channels failed, queue for retry and report failure ────────────
-    # Pre-fix this swallowed the queue-insert error and still committed
-    # convo.escalated = True alongside an "ok: True" response — the customer
-    # believed their escalation went through when in fact nobody was notified.
-    # Now: commit the pending row in its own transaction, then raise 500 so
-    # the caller knows the escalation has not yet been delivered.
+    # Uses an upsert (ON CONFLICT DO NOTHING) keyed on (bot_id, session_id)
+    # so the retry scheduler never creates duplicate rows for the same
+    # escalation. If the write itself fails, we MUST NOT report "queued" —
+    # the escalation is permanently lost. Instead, raise 503 with a clear
+    # message so the caller knows to retry.
     all_results = list(results.values())
     if all_results and not any(all_results):
-        try:
+        dialect = db.bind.dialect.name if db.bind else ""
+        if dialect == "postgresql":
+            stmt = pg_insert(PendingEscalation).values(
+                bot_id=bot_id, session_id=session_id,
+                customer_email=contact["email"],
+                retry_after=datetime.utcnow() + timedelta(minutes=5),
+            ).on_conflict_do_nothing(
+                index_elements=["bot_id", "session_id"]
+            )
+        elif dialect == "sqlite":
+            stmt = sqlite_insert(PendingEscalation).values(
+                bot_id=bot_id, session_id=session_id,
+                customer_email=contact["email"],
+                retry_after=datetime.utcnow() + timedelta(minutes=5),
+            ).on_conflict_do_nothing(
+                index_elements=["bot_id", "session_id"]
+            )
+        else:
             pending = PendingEscalation(
-                bot_id=bot_id,
-                session_id=session_id,
-                customer_email=customer_email,
+                bot_id=bot_id, session_id=session_id,
+                customer_email=contact["email"],
                 retry_after=datetime.utcnow() + timedelta(minutes=5),
             )
             db.add(pending)
+        try:
+            db.execute(stmt)
             db.commit()
         except Exception as e:
             db.rollback()
+            log.error(
+                "escalation_queue_insert_failed",
+                error=str(e), bot_id=bot_id, session_id=session_id,
+            )
             _log_notification_error(db, bot_id, "pending_escalation_queue", e)
+            raise HTTPException(
+                status_code=503,
+                detail="Escalation queue failed — please try again",
+            )
         raise HTTPException(
             status_code=500,
             detail="All notification channels failed; queued for retry.",
