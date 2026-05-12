@@ -161,14 +161,29 @@ def export_csv(
     db: Session = Depends(get_db),
     tenant: Tenant = Depends(get_current_client),
 ):
+    # Two round trips, regardless of conversation count — instead of N+1 (one
+    # query per conversation). The CSV format consumes a {convo_id: [msgs]}
+    # dict, so we fetch every message for this tenant in a single ordered
+    # query and bucket it in Python. ``generate_conversations_csv`` is
+    # unchanged; output bytes are identical.
     convos = db.query(Conversation).filter(
         Conversation.bot_id == tenant.bot_id
     ).order_by(Conversation.started_at.desc()).all()
-    messages_map = {}
-    for convo in convos:
-        messages_map[convo.id] = db.query(Message).filter(
-            Message.conversation_id == convo.id
-        ).order_by(Message.created_at.asc()).all()
+
+    messages_map: dict[int, list[Message]] = {c.id: [] for c in convos}
+    if convos:
+        all_messages = db.query(Message).filter(
+            Message.conversation_id.in_(messages_map.keys()),
+        ).order_by(Message.conversation_id, Message.created_at.asc()).all()
+        for msg in all_messages:
+            # Defensive: skip messages whose conversation isn't in the map.
+            # Can only happen if a Message row's conversation_id points to a
+            # convo from a different bot (data corruption) — silently drop
+            # rather than crash the export.
+            bucket = messages_map.get(msg.conversation_id)
+            if bucket is not None:
+                bucket.append(msg)
+
     csv_content = generate_conversations_csv(convos, messages_map)
     return StreamingResponse(
         io.StringIO(csv_content),
