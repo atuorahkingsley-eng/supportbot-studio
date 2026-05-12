@@ -6,10 +6,15 @@ from sqlalchemy import (
     ForeignKey, Text, text, Date, UniqueConstraint, event,
 )
 from sqlalchemy.engine import Engine
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 
 from backend.config import settings
+
+import structlog
+
+log = structlog.get_logger(__name__)
 
 # Ensure data directory exists
 os.makedirs("./data", exist_ok=True)
@@ -448,8 +453,18 @@ def _migrate_columns():
             try:
                 conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col_def}"))
                 conn.commit()
-            except Exception:
-                pass  # Column already exists
+            except OperationalError as e:
+                msg = str(e).lower()
+                if "duplicate column" in msg:
+                    pass
+                else:
+                    log.error(
+                        "migration_column_failed",
+                        error=str(e)[:300],
+                        table=table,
+                        column=col_def,
+                    )
+                    raise
 
 
 def init_db():
