@@ -597,7 +597,7 @@ export default function ChatWidget({ config, botId }) {
 
   const handleExitCapture = async () => {
     if (exitEmail.trim()) {
-      await captureLeadFromAction(exitEmail)
+      await captureLeadFromAction({ name: null, email: exitEmail, phone: null })
       addToast('Thanks! Check your email soon.', 'success')
     }
     setShowExitIntent(false)
