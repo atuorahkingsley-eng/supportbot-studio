@@ -192,6 +192,11 @@ export default function EmbedChat() {
   }
 
   const accent = config.brand_color || '#6366F1'
+  const safeBookingUrl = salesAction?.booking_url &&
+    (salesAction.booking_url.startsWith('https://') ||
+     salesAction.booking_url.startsWith('http://'))
+    ? salesAction.booking_url
+    : null
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif', background: '#F9FAFB', '--accent': accent }}>
@@ -251,7 +256,9 @@ export default function EmbedChat() {
             {salesAction.type === 'demo' && (
               <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 12, padding: '12px 14px', fontSize: 13 }}>
                 <div style={{ fontWeight: 600, marginBottom: 8 }}>📅 {salesAction.message}</div>
-                <a href={salesAction.booking_url} target="_blank" rel="noreferrer" style={{ display: 'inline-block', background: accent, color: '#fff', padding: '6px 14px', borderRadius: 8, textDecoration: 'none', fontSize: 13, fontWeight: 600 }}>Book Demo →</a>
+                {safeBookingUrl && (
+                  <a href={safeBookingUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-block', background: accent, color: '#fff', padding: '6px 14px', borderRadius: 8, textDecoration: 'none', fontSize: 13, fontWeight: 600 }}>Book Demo →</a>
+                )}
               </div>
             )}
             {salesAction.type === 'capture_lead' && (
