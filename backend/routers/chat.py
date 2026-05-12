@@ -2,6 +2,7 @@ import json
 import uuid
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Request
+from sqlalchemy import update
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from pydantic import BaseModel
@@ -431,7 +432,16 @@ async def _process_chat(
     if detected_language and not convo.primary_language:
         convo.primary_language = detected_language
 
-    convo.message_count = (convo.message_count or 0) + 2
+    # Atomic increment — Conversation.message_count = Conversation.message_count + 2
+    # is computed by the database, not Python, so two concurrent requests for
+    # the same conversation can no longer both read N and both write N+2 (one
+    # increment lost). The ORM attribute on ``convo`` is intentionally NOT
+    # re-read here; downstream code in this function does not consume it.
+    db.execute(
+        update(Conversation)
+        .where(Conversation.id == convo.id)
+        .values(message_count=Conversation.message_count + 2)
+    )
     db.commit()
 
     return ChatResponse(
