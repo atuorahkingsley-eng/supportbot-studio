@@ -6,7 +6,7 @@ from sqlalchemy import (
     ForeignKey, Text, text, Date, UniqueConstraint, event,
 )
 from sqlalchemy.engine import Engine
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import OperationalError, ProgrammingError
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 
@@ -453,9 +453,9 @@ def _migrate_columns():
             try:
                 conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col_def}"))
                 conn.commit()
-            except OperationalError as e:
+            except (OperationalError, ProgrammingError) as e:
                 msg = str(e).lower()
-                if "duplicate column" in msg:
+                if "duplicate column" in msg or "already exists" in msg:
                     pass
                 else:
                     log.error(
