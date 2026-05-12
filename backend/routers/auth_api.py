@@ -9,6 +9,10 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional
 
+import structlog
+from jose import jwt
+from jose.exceptions import ExpiredSignatureError, JWTError
+
 from backend.database import get_db, Tenant, SuperAdmin
 from backend.services.auth import (
     hash_password, verify_password, create_token, decode_token,
@@ -16,6 +20,51 @@ from backend.services.auth import (
 )
 from backend.services.rate_limit import limiter
 from backend.config import settings
+
+log = structlog.get_logger(__name__)
+
+# Same algorithm constant the auth service uses for encode/decode. Kept
+# local rather than importing the private constant from services/auth so a
+# rename there doesn't silently break this file.
+_JWT_ALGORITHM = "HS256"
+
+
+def _decode_or_401(token: str) -> dict:
+    """Decode a JWT, raising a typed 401 on every failure mode.
+
+    Replaces the silent ``decode_token() -> None`` call at the /me endpoint,
+    where an expired or malformed cookie previously bubbled out as a generic
+    "Not authenticated" 401 — opaque to the frontend, which now needs to
+    distinguish "log back in" from "your session ended".
+
+    Behaviour:
+      * ExpiredSignatureError → 401 "Token expired — please log in again"
+      * InvalidTokenError / JWTError → 401 "Invalid token"
+      * Any other Exception → log via structlog, return 401 "Invalid token"
+        (internal details NEVER reach the response body)
+
+    Args:
+        token: The raw JWT string from the cookie.
+
+    Returns:
+        The decoded claims dict on success.
+
+    Raises:
+        HTTPException(401): On any decode failure.
+    """
+    try:
+        return jwt.decode(token, settings.jwt_secret_key, algorithms=[_JWT_ALGORITHM])
+    except ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired — please log in again")
+    except JWTError:
+        # python-jose folds malformed/invalid-signature/wrong-algo all under
+        # JWTError, which is what pyjwt would surface as InvalidTokenError.
+        raise HTTPException(status_code=401, detail="Invalid token")
+    except Exception as e:
+        # Anything else (e.g. corrupted settings, unexpected library error)
+        # — log structurally for ops visibility, return generic 401.
+        log.error("jwt_decode.unexpected_error", error=str(e)[:300])
+        raise HTTPException(status_code=401, detail="Invalid token")
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -135,10 +184,13 @@ def logout(request: Request, response: Response, db: Session = Depends(get_db)):
 def get_me(request: Request, db: Session = Depends(get_db)):
     """Return current user info regardless of role. Returns 401 if not logged in."""
     # Check super admin first
+    # _decode_or_401 raises typed 401s (expired vs invalid) so the frontend
+    # can show the right "log in again" message rather than the opaque
+    # "not authenticated" the silent decode_token() previously emitted.
     super_token = request.cookies.get("sb_super_token")
     if super_token:
-        payload = decode_token(super_token)
-        if payload and payload.get("role") == "super_admin":
+        payload = _decode_or_401(super_token)
+        if payload.get("role") == "super_admin":
             admin = db.query(SuperAdmin).filter(
                 SuperAdmin.username == payload.get("username")
             ).first()
@@ -151,8 +203,8 @@ def get_me(request: Request, db: Session = Depends(get_db)):
     # Check client token
     client_token = request.cookies.get("sb_client_token")
     if client_token:
-        payload = decode_token(client_token)
-        if payload and payload.get("role") == "client":
+        payload = _decode_or_401(client_token)
+        if payload.get("role") == "client":
             tenant = db.query(Tenant).filter(
                 Tenant.bot_id == payload.get("bot_id"),
                 Tenant.is_active == True,
