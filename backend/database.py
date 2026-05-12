@@ -453,10 +453,10 @@ def _migrate_columns():
             try:
                 conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col_def}"))
                 conn.commit()
-            except (OperationalError, ProgrammingError) as e:
+            except Exception as e:
                 msg = str(e).lower()
                 if "duplicate column" in msg or "already exists" in msg:
-                    pass
+                    conn.rollback()
                 else:
                     log.error(
                         "migration_column_failed",
