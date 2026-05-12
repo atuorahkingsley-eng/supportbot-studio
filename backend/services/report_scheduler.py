@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from backend.database import SessionLocal, ReportSchedule, Conversation, Message, BotConfig, ErrorLog
 from backend.services.telegram_notify import send_telegram_message
 from backend.services.email_notify import send_emailjs
+from backend.config import settings
 
 
 # ── Scheduler configuration ───────────────────────────────────────────────────
@@ -134,7 +135,15 @@ async def send_report():
                 report = _build_report(db, bot_id)
 
                 if schedule.send_via in ("telegram", "both"):
-                    await send_telegram_message(report)
+                    bot_config = db.query(BotConfig).filter(
+                        BotConfig.bot_id == bot_id
+                    ).first()
+                    chat_id = (
+                        bot_config.telegram_handle
+                        if bot_config and bot_config.telegram_handle
+                        else settings.telegram_chat_id
+                    )
+                    await send_telegram_message(report, chat_id_override=chat_id)
 
                 if schedule.send_via in ("email", "both"):
                     bot_config = db.query(BotConfig).filter(
