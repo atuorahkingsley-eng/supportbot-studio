@@ -80,7 +80,8 @@ def get_public_config(request: Request, bot_id: str, db: Session = Depends(get_d
         "welcome_message": config.welcome_message if config else "Hi! How can I help?",
         "voice_enabled": config.voice_enabled if config else False,
         # Empty / missing → widget falls back to its own default.
-        "greeting_message": (config.greeting_message if config else None) or "Hi! Need help? 👋",
+        # Distinguish None (not set) from "" (intentionally empty).
+        "greeting_message": config.greeting_message if config and config.greeting_message is not None else "Hi! Need help? 👋",
     }
 
 
