@@ -278,6 +278,20 @@ export default function ChatWidget({ config, botId }) {
   const welcomeMsg = config?.welcome_message || 'Hi! How can I help you today?'
   const voiceEnabled = config?.voice_enabled !== false
 
+  // Refs to keep voice recognition and timer callbacks from closing over
+  // stale state values (Bug 5, Bug 7).
+  const loadingRef = useRef(loading)
+  const sessionIdRef = useRef(sessionId)
+  const escalatedRef = useRef(escalated)
+  const escalateFormShownRef = useRef(escalateFormShown)
+  const messagesRef = useRef(messages)
+
+  useEffect(() => { loadingRef.current = loading }, [loading])
+  useEffect(() => { sessionIdRef.current = sessionId }, [sessionId])
+  useEffect(() => { escalatedRef.current = escalated }, [escalated])
+  useEffect(() => { escalateFormShownRef.current = escalateFormShown }, [escalateFormShown])
+  useEffect(() => { messagesRef.current = messages }, [messages])
+
   // Load sales config
   useEffect(() => {
     fetch('/api/sales/config', { credentials: 'include' }).then(r => r.json()).then(setSalesConfig).catch(() => {})
@@ -303,7 +317,7 @@ export default function ChatWidget({ config, botId }) {
   useEffect(() => {
     if (!salesConfig?.enabled || !salesConfig?.greeting_delay_seconds) return
     const t = setTimeout(() => {
-      if (messages.filter(m => m.role === 'user').length === 0) {
+      if (messagesRef.current.filter(m => m.role === 'user').length === 0) {
         setShowProactive(true)
       }
     }, (salesConfig.greeting_delay_seconds || 30) * 1000)
@@ -390,7 +404,7 @@ export default function ChatWidget({ config, botId }) {
   // ── Send message ──────────────────────────────────────────────────────────
   const sendMessageWithText = async (text) => {
     const userMsg = text.trim()
-    if (!userMsg || loading) return
+    if (!userMsg || loadingRef.current) return
     setInput('')
     const method = inputMethodRef.current
     inputMethodRef.current = 'text'
@@ -402,12 +416,8 @@ export default function ChatWidget({ config, botId }) {
     setSalesAction(null)
     setShowProactive(false)
 
-    // Short-circuit: customer asked for a human. We bypass Claude entirely so
-    // we don't burn a model call on a deterministic intent, and so the form
-    // appears immediately rather than after a streaming response.
-    // Guarded with escalateFormShown so a second trigger phrase doesn't
-    // re-prompt mid-session.
-    if (!escalated && !escalateFormShown && detectEscalationIntent(userMsg)) {
+    // Short-circuit: customer asked for a human.
+    if (!escalatedRef.current && !escalateFormShownRef.current && detectEscalationIntent(userMsg)) {
       setEscalateFormShown(true)
       setMessages(prev => [...prev, {
         role: 'assistant',
@@ -426,7 +436,7 @@ export default function ChatWidget({ config, botId }) {
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          session_id: sessionId,
+          session_id: sessionIdRef.current,
           visitor_id: visitorId,
           message: userMsg,
           browser_language: browserLang,
@@ -434,23 +444,17 @@ export default function ChatWidget({ config, botId }) {
         }),
       })
       const data = await r.json()
-      if (!sessionId) setSessionId(data.session_id)
+      if (!sessionIdRef.current) setSessionId(data.session_id)
 
-      // Phase 1: memory
       if (data.is_returning && !isReturning) setIsReturning(true)
-      // Phase 2: language
       if (data.detected_language) setDetectedLang(data.detected_language)
-      // Phase 3: sales
       if (data.sales_action) setSalesAction(data.sales_action)
 
       setMessages(prev => [...prev, {
         role: 'assistant', content: data.reply, auto: data.was_auto_reply,
       }])
 
-      // AI-driven escalation signal — route through the same form flow as the
-      // phrase-detection path so we always collect contact details, never the
-      // legacy email-only banner.
-      if (data.needs_escalation && !escalated && !escalateFormShown) {
+      if (data.needs_escalation && !escalatedRef.current && !escalateFormShownRef.current) {
         setEscalateFormShown(true)
         setTimeout(() => setShowEscalateForm(true), 800)
       }
