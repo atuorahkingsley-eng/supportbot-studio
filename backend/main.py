@@ -73,14 +73,16 @@ def _log_daily_usage() -> None:
         # Pick the right INSERT constructor up-front. Both Postgres and SQLite
         # have ON CONFLICT, but SQLAlchemy exposes them via dialect-specific
         # `insert()` functions with slightly different return shapes.
-        dialect = db.bind.dialect.name
-        if dialect == "postgresql":
+        db_url = str(settings.database_url)
+        if "postgresql" in db_url or "postgres" in db_url:
             insert_fn = pg_insert
-        else:
-            # SQLite path covers local dev + test. The sqlite dialect's
-            # ``on_conflict_do_update`` was added in SQLAlchemy 1.4 and is
-            # present in this project's pinned version.
+        elif "sqlite" in db_url:
             insert_fn = sqlite_insert
+        else:
+            raise RuntimeError(
+                f"Unsupported database dialect: {db_url}. "
+                "SupportBot Studio supports SQLite and PostgreSQL only."
+            )
 
         for tenant in db.query(Tenant).filter(Tenant.is_active == True).all():
             bid = tenant.bot_id
