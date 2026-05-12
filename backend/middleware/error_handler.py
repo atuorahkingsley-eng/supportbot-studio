@@ -6,11 +6,14 @@ and alerts via Telegram when healing fails.
 import json
 import traceback as tb
 
+import structlog
 from fastapi import Request
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from backend.database import SessionLocal, ErrorLog
+
+log = structlog.get_logger(__name__)
 
 
 class ErrorHandlerMiddleware(BaseHTTPMiddleware):
@@ -85,8 +88,31 @@ class ErrorHandlerMiddleware(BaseHTTPMiddleware):
                         f"Status: Auto-heal failed — needs manual fix"
                     )
 
-            except Exception:
-                pass  # Never let the error handler itself crash the app
+            except Exception as handler_exc:
+                # The error handler itself blew up. We MUST still return a
+                # response — but a silent ``pass`` here previously meant a
+                # broken handler was invisible in production. Log explicitly
+                # before falling through to the 500 response.
+                #
+                # Request context (path, method, original error_type, bot_id)
+                # is included so the structured log is actionable on its own
+                # without needing to correlate to upstream traces.
+                try:
+                    log.error(
+                        "error_handler.crashed",
+                        path=str(request.url.path),
+                        method=request.method,
+                        original_error_type=error_type,
+                        original_error=str(e)[:300],
+                        handler_error=str(handler_exc)[:300],
+                        handler_traceback=tb.format_exc()[:3000],
+                        bot_id=bot_id,
+                    )
+                except Exception:
+                    # Logging failed too (e.g. structlog misconfigured). At
+                    # this point the safest action is to return the generic
+                    # 500 below — we cannot afford to raise from middleware.
+                    pass
             finally:
                 db.close()
 
