@@ -192,6 +192,88 @@ Impact: [what breaks or changes downstream]
 
 ---
 
+## SupportBot Studio — Design System
+
+> Generated via ui-ux-pro-max-skill v2.0. Audit date: 2026-05-11.
+> Apply these tokens to ALL admin and super admin UI work. Never revert to purple/violet unless explicitly instructed.
+
+### Design Philosophy
+SupportBot Studio has two UI surfaces with different design goals:
+
+| Surface | Audience | Design Goal | Style |
+|---|---|---|---|
+| **Widget** (customer-facing chatbot) | End users | Feel AI-native, conversational | AI-Native UI — purple/cyan is acceptable HERE only |
+| **Admin Panel** | Tenant clients (paying customers) | Feel professional, trustworthy, enterprise | Trust & Authority — navy/slate/blue |
+| **Super Admin Panel** | Kay (internal operator) | Dense, data-focused, high contrast | Same as Admin — no purple |
+
+### Color Tokens (Admin + Super Admin)
+
+```css
+/* globals.css — SupportBot Studio Admin Design System */
+:root {
+  /* Core palette */
+  --color-primary:     #0F172A;  /* Dark Navy — headers, sidebar bg */
+  --color-secondary:   #334155;  /* Slate — secondary text, borders */
+  --color-cta:         #0369A1;  /* Professional Blue — buttons, links, highlights */
+  --color-bg:          #F8FAFC;  /* Clean White — page background */
+  --color-text:        #020617;  /* Near Black — body text */
+
+  /* Extended palette */
+  --color-surface:     #FFFFFF;  /* Cards, modals */
+  --color-border:      #E2E8F0;  /* Dividers, input borders */
+  --color-muted:       #64748B;  /* Placeholder text, inactive nav */
+  --color-success:     #16A34A;  /* Status: active, online */
+  --color-warning:     #D97706;  /* Status: pending, caution */
+  --color-danger:      #DC2626;  /* Status: error, escalation */
+  --color-cta-hover:   #0284C7;  /* CTA hover state */
+  --color-cta-light:   #EFF6FF;  /* CTA ghost bg, pill badges */
+
+  /* Widget surface only — do NOT use in admin panels */
+  --widget-primary:    #7C3AED;
+  --widget-secondary:  #A78BFA;
+  --widget-cta:        #06B6D4;
+  --widget-bg:         #FAF5FF;
+}
+```
+
+### Typography
+
+```css
+/* In index.html <head> */
+/* @import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Fira+Sans:wght@300;400;500;600;700&display=swap'); */
+
+:root {
+  --font-heading: 'Fira Code', monospace;   /* Section headers, stat numbers, bot names */
+  --font-body:    'Fira Sans', sans-serif;  /* All body text, labels, inputs */
+}
+```
+
+### Anti-Patterns (NEVER in Admin/Super Admin)
+- ❌ Purple or violet gradients (`#7C3AED`, `#A78BFA`, etc.)
+- ❌ Pink or magenta accents
+- ❌ Emoji as icons — use SVG (Heroicons or Lucide)
+- ❌ Playful or rounded bubbly aesthetics
+- ❌ Dark mode in admin (light mode only unless user toggles)
+
+### Key Effects (Admin)
+- Hover: `transition: all 150-300ms ease`
+- Buttons: `cursor-pointer` always
+- Stats/metrics: subtle count-up or pulse reveal on load
+- Status badges: colored dot + label (green/yellow/red from token set)
+- Tables: row hover `background: var(--color-cta-light)`
+
+### Pre-Delivery Checklist (run before every UI PR)
+- [ ] No emojis as icons
+- [ ] `cursor-pointer` on all clickable elements
+- [ ] Hover states with smooth transitions (150–300ms)
+- [ ] Text contrast ≥ 4.5:1 (light mode)
+- [ ] Focus states visible for keyboard nav
+- [ ] `prefers-reduced-motion` respected
+- [ ] Responsive: 375px · 768px · 1024px · 1440px
+- [ ] No hardcoded color hex in JSX — use CSS vars only
+
+---
+
 ## SupportBot Studio — Project-Specific Conventions
 
 These rules document what the SupportBot Studio v2 codebase *actually does* today. They override the generic standards above where they conflict, and capture conventions the generic standards don't mention. Audit date: 2026-05-04.

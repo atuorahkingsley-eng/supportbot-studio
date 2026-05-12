@@ -1,4 +1,5 @@
 import re
+import secrets
 from datetime import datetime
 from urllib.parse import urlparse
 from fastapi import APIRouter, Depends, HTTPException
@@ -14,6 +15,40 @@ router = APIRouter(prefix="/api/webhooks", tags=["webhooks"])
 
 
 _WHATSAPP_RE = re.compile(r"^whatsapp:\+\d{6,20}$")
+
+
+def _mask_secret(secret: Optional[str]) -> Optional[str]:
+    """Return a UI-safe representation of an HMAC secret — 28 bullets + last 4 chars.
+
+    Constant width on purpose: receivers can't infer real secret length from
+    a screenshot or DOM inspection. Returns None when no secret is set, so
+    the frontend can distinguish "no secret" from "secret set but masked".
+    """
+    if not secret:
+        return None
+    return "\u2022" * 28 + secret[-4:]
+
+
+def _serialize_webhook(wh: WebhookConfig, plaintext_secret: Optional[str] = None) -> dict:
+    """Build a response payload for a WebhookConfig row.
+
+    `plaintext_secret` is non-None ONLY on the create + regenerate responses
+    that are explicitly allowed to surface the raw secret once. Every other
+    code path passes through `_mask_secret` so the wire never carries
+    credentials in cleartext after the initial reveal.
+    """
+    return {
+        "id": wh.id,
+        "platform": wh.platform,
+        "webhook_url": wh.webhook_url,
+        "enabled": wh.enabled,
+        "notify_on": wh.notify_on,
+        "events": wh.events,
+        "secret": plaintext_secret if plaintext_secret is not None else _mask_secret(wh.secret),
+        "secret_generated": bool(wh.secret),
+        "last_test_ok": wh.last_test_ok,
+        "created_at": wh.created_at,
+    }
 
 
 def _validate_webhook_url(platform: str, url: str, secret: Optional[str] = None) -> None:
@@ -92,13 +127,14 @@ class WebhookResponse(BaseModel):
     enabled: bool
     notify_on: str
     events: Optional[str] = None
-    # NOTE: `secret` deliberately omitted — credentials are not returned
-    # in list/get responses to avoid leaking via logs or screen-sharing.
-    last_test_ok: Optional[bool]
+    # `secret` is masked on list/get/update (28 bullets + last 4 chars) and
+    # plaintext only on the create + regenerate responses that surface it
+    # exactly once. `secret_generated` lets the UI render "Secret set" badges
+    # without ever shipping the credential itself.
+    secret: Optional[str] = None
+    secret_generated: bool = False
+    last_test_ok: Optional[bool] = None
     created_at: datetime
-
-    class Config:
-        from_attributes = True
 
 
 @router.get("", response_model=List[WebhookResponse])
@@ -106,7 +142,8 @@ def list_webhooks(
     db: Session = Depends(get_db),
     tenant: Tenant = Depends(get_current_client),
 ):
-    return db.query(WebhookConfig).filter(WebhookConfig.bot_id == tenant.bot_id).all()
+    rows = db.query(WebhookConfig).filter(WebhookConfig.bot_id == tenant.bot_id).all()
+    return [_serialize_webhook(wh) for wh in rows]
 
 
 @router.post("", response_model=WebhookResponse)
@@ -115,12 +152,25 @@ def create_webhook(
     db: Session = Depends(get_db),
     tenant: Tenant = Depends(get_current_client),
 ):
-    _validate_webhook_url(data.platform, data.webhook_url, data.secret)
-    wh = WebhookConfig(bot_id=tenant.bot_id, **data.model_dump())
+    # Auto-generate an HMAC secret for custom_https when the caller didn't
+    # supply one. token_hex(32) → 64 hex chars (256 bits) — same entropy
+    # band as Slack/Discord signing keys. The plaintext is returned ONCE
+    # in this response; subsequent GETs only ever expose the masked form.
+    plaintext_to_return: Optional[str] = None
+    secret_to_store = data.secret
+    if data.platform == "custom_https" and not secret_to_store:
+        secret_to_store = secrets.token_hex(32)
+        plaintext_to_return = secret_to_store
+
+    _validate_webhook_url(data.platform, data.webhook_url, secret_to_store)
+
+    payload = data.model_dump()
+    payload["secret"] = secret_to_store
+    wh = WebhookConfig(bot_id=tenant.bot_id, **payload)
     db.add(wh)
     db.commit()
     db.refresh(wh)
-    return wh
+    return _serialize_webhook(wh, plaintext_secret=plaintext_to_return)
 
 
 @router.put("/{webhook_id}", response_model=WebhookResponse)
@@ -149,7 +199,39 @@ def update_webhook(
         setattr(wh, field, value)
     db.commit()
     db.refresh(wh)
-    return wh
+    return _serialize_webhook(wh)
+
+
+@router.post("/{webhook_id}/regenerate-secret", response_model=WebhookResponse)
+def regenerate_webhook_secret(
+    webhook_id: int,
+    db: Session = Depends(get_db),
+    tenant: Tenant = Depends(get_current_client),
+):
+    """Rotate the HMAC secret for a custom_https webhook.
+
+    The old secret is overwritten in place — any active integration relying
+    on it breaks immediately. That's the point: rotation is for compromised
+    or leaked secrets, so a hard cutover is the safe behaviour. The new
+    secret is returned plaintext exactly once; subsequent GETs mask it.
+    """
+    wh = db.query(WebhookConfig).filter(
+        WebhookConfig.id == webhook_id,
+        WebhookConfig.bot_id == tenant.bot_id,
+    ).first()
+    if not wh:
+        raise HTTPException(status_code=404, detail="Webhook not found")
+    if wh.platform != "custom_https":
+        raise HTTPException(
+            status_code=400,
+            detail="Only custom_https webhooks have rotatable secrets",
+        )
+
+    new_secret = secrets.token_hex(32)
+    wh.secret = new_secret
+    db.commit()
+    db.refresh(wh)
+    return _serialize_webhook(wh, plaintext_secret=new_secret)
 
 
 @router.delete("/{webhook_id}")

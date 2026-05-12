@@ -49,7 +49,7 @@ export default function LoginPage() {
       <div style={{ width: '100%', maxWidth: 400 }}>
         {/* Logo */}
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
-          <div style={{ width: 56, height: 56, borderRadius: 14, background: '#6366F1', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28, margin: '0 auto 12px' }}>🤖</div>
+          <div style={{ width: 56, height: 56, borderRadius: 14, background: 'var(--color-cta)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28, margin: '0 auto 12px' }}>🤖</div>
           <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: 'var(--text-primary)' }}>SupportBot Studio</h1>
           <p style={{ margin: '6px 0 0', color: 'var(--text-secondary)', fontSize: 14 }}>Sign in to your account</p>
         </div>
@@ -92,7 +92,7 @@ export default function LoginPage() {
 
         <p style={{ textAlign: 'center', marginTop: 16, fontSize: 13, color: 'var(--text-muted)' }}>
           Platform administrator?{' '}
-          <Link to="/super-admin" style={{ color: '#6366F1', textDecoration: 'none' }}>Super Admin →</Link>
+          <Link to="/super-admin" style={{ color: 'var(--color-cta)', textDecoration: 'none' }}>Super Admin →</Link>
         </p>
       </div>
     </div>

@@ -287,7 +287,7 @@ export default function AdminPanel({ config, setConfig }) {
               />
               <div style={{
                 position: 'absolute', inset: 0,
-                background: form.voice_enabled !== false ? 'var(--accent, #6366F1)' : 'var(--border)',
+                background: form.voice_enabled !== false ? 'var(--color-cta)' : 'var(--border)',
                 borderRadius: 999, transition: 'background 0.2s',
               }} />
               <div style={{
@@ -429,13 +429,13 @@ export default function AdminPanel({ config, setConfig }) {
           }}
           onClick={() => fileRef.current?.click()}
           style={{
-            border: `2px dashed ${dragOver ? 'var(--accent)' : 'var(--border)'}`,
+            border: `2px dashed ${dragOver ? 'var(--color-cta)' : 'var(--border)'}`,
             borderRadius: 'var(--radius)',
             padding: '32px',
             textAlign: 'center',
             cursor: 'pointer',
-            background: dragOver ? '#F5F3FF' : 'var(--body-bg)',
-            transition: 'all 0.15s',
+            background: dragOver ? 'var(--color-cta-light)' : 'var(--body-bg)',
+            transition: 'background 150ms ease, border-color 150ms ease',
           }}
         >
           <div style={{ fontSize: 32, marginBottom: 8 }}>📄</div>

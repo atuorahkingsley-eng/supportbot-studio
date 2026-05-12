@@ -68,7 +68,7 @@ function TenantRow({ t, onEdit, onToggle, onResetPassword, onDelete }) {
       <td style={{ padding: '10px 12px', fontSize: 13 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <div style={{ width: 80, height: 6, background: 'var(--border)', borderRadius: 99 }}>
-            <div style={{ width: usagePct + '%', height: '100%', background: usagePct > 80 ? '#EF4444' : '#6366F1', borderRadius: 99 }} />
+            <div style={{ width: usagePct + '%', height: '100%', background: usagePct > 80 ? 'var(--color-danger)' : 'var(--color-cta)', borderRadius: 99 }} />
           </div>
           <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{t.messages_used_this_month}/{t.monthly_message_limit}</span>
         </div>
@@ -394,7 +394,7 @@ function SuperAdminDashboard({ onLogout }) {
   const TABS = [['overview', '📊 Overview'], ['tenants', '🏢 Tenants'], ['billing', '💳 Billing'], ['system', '⚙️ System'], ['health', '🏥 Health']]
 
   return (
-    <div style={{ '--accent': '#6366F1', minHeight: '100vh', background: 'var(--body-bg)' }}>
+    <div style={{ '--accent': 'var(--color-cta)', minHeight: '100vh', background: 'var(--color-bg)' }}>
       <header style={{ background: 'var(--header-bg)', color: '#fff', padding: '0 24px', display: 'flex', alignItems: 'center', gap: '32px', height: 56, position: 'sticky', top: 0, zIndex: 100 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <span style={{ fontSize: 22 }}>🛡️</span>
@@ -402,7 +402,7 @@ function SuperAdminDashboard({ onLogout }) {
         </div>
         <nav style={{ display: 'flex', gap: 4 }}>
           {TABS.map(([id, label]) => (
-            <button key={id} onClick={() => setTab(id)} style={{ padding: '6px 14px', borderRadius: 6, border: 'none', background: tab === id ? '#6366F1' : 'transparent', color: tab === id ? '#fff' : '#A1A1AA', fontWeight: 500, fontSize: 14, cursor: 'pointer' }}>
+            <button key={id} onClick={() => setTab(id)} style={{ padding: '6px 14px', borderRadius: 6, border: 'none', background: tab === id ? 'var(--color-cta)' : 'transparent', color: tab === id ? '#fff' : 'var(--color-muted)', fontWeight: 500, fontSize: 14, cursor: 'pointer', transition: 'background 150ms ease, color 150ms ease' }}>
               {label}
             </button>
           ))}
@@ -613,7 +613,7 @@ function SuperAdminDashboard({ onLogout }) {
                         <div key={type} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                           <span style={{ width: 160, fontSize: 12, fontFamily: 'var(--font-mono)' }}>{type}</span>
                           <div style={{ flex: 1, height: 6, background: 'var(--border)', borderRadius: 99 }}>
-                            <div style={{ width: `${Math.min(100, (s.healed / Math.max(s.total, 1)) * 100)}%`, height: '100%', background: '#6366F1', borderRadius: 99 }} />
+                            <div style={{ width: `${Math.min(100, (s.healed / Math.max(s.total, 1)) * 100)}%`, height: '100%', background: 'var(--color-cta)', borderRadius: 99 }} />
                           </div>
                           <span style={{ fontSize: 11, color: 'var(--text-secondary)', width: 80, textAlign: 'right' }}>{s.healed}/{s.total} healed</span>
                         </div>
@@ -659,7 +659,13 @@ function SuperAdminDashboard({ onLogout }) {
                   </thead>
                   <tbody>
                     {(errors?.errors || []).map(e => {
-                      const statusColor = { healed: '#16A34A', failed: '#DC2626', healing: '#D97706', new: '#6B7280', resolved_manually: '#6366F1' }[e.status] || '#6B7280'
+                      const statusColor = {
+                        healed: 'var(--color-success)',
+                        failed: 'var(--color-danger)',
+                        healing: 'var(--color-warning)',
+                        new: 'var(--color-muted)',
+                        resolved_manually: 'var(--color-cta)',
+                      }[e.status] || 'var(--color-muted)'
                       const ago = e.created_at ? (() => { const d = (Date.now() - new Date(e.created_at)) / 1000; return d < 60 ? `${Math.round(d)}s ago` : d < 3600 ? `${Math.round(d/60)}m ago` : `${Math.round(d/3600)}h ago` })() : ''
                       return (
                         <tr key={e.id} style={{ borderBottom: '1px solid var(--border)' }}>

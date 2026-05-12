@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Fira+Sans:wght@300;400;500;600;700&display=swap');
+
 *, *::before, *::after {
   box-sizing: border-box;
   margin: 0;
@@ -5,107 +7,169 @@
 }
 
 :root {
-  --font-sans: 'DM Sans', system-ui, sans-serif;
-  --font-mono: 'Space Mono', monospace;
-  --header-bg: #18181B;
-  --body-bg: #FAFAF9;
-  --card-bg: #FFFFFF;
-  --border: #E4E4E7;
-  --text-primary: #18181B;
-  --text-secondary: #71717A;
-  --text-muted: #A1A1AA;
-  --success: #22C55E;
-  --warning: #F59E0B;
-  --error: #EF4444;
-  --radius: 14px;
-  --radius-sm: 8px;
+  /* ── Admin & Super Admin palette — Trust & Authority ─── */
+  --color-primary:     #0F172A;   /* Dark Navy — sidebar bg, headers */
+  --color-secondary:   #334155;   /* Slate — secondary text, borders */
+  --color-cta:         #0369A1;   /* Professional Blue — buttons, links */
+  --color-cta-hover:   #0284C7;   /* CTA hover */
+  --color-cta-light:   #EFF6FF;   /* Ghost bg, pill badges, row hover */
+  --color-bg:          #F8FAFC;   /* Page background */
+  --color-surface:     #FFFFFF;   /* Cards, modals, inputs */
+  --color-border:      #E2E8F0;   /* Dividers, input borders */
+  --color-text:        #020617;   /* Body text */
+  --color-muted:       #64748B;   /* Placeholder, inactive nav items */
+  --color-success:     #16A34A;   /* Active, online, success */
+  --color-warning:     #D97706;   /* Pending, caution */
+  --color-danger:      #DC2626;   /* Error, escalation */
+
+  /* ── Typography ─────────────────────────────────────── */
+  --font-heading:      'Fira Code', monospace;
+  --font-body:         'Fira Sans', sans-serif;
+
+  /* ── Widget palette — DO NOT use in admin panels ─────── */
+  --widget-primary:    #7C3AED;
+  --widget-secondary:  #A78BFA;
+  --widget-cta:        #06B6D4;
+  --widget-bg:         #FAF5FF;
+
+  /* ── Legacy aliases — repointed at new tokens so the rest
+        of the admin/super-admin CSS keeps working without
+        a sweep through every consumer. ─────────────────── */
+  --font-sans:         var(--font-body);
+  --font-mono:         var(--font-heading);
+  --header-bg:         var(--color-primary);
+  --body-bg:           var(--color-bg);
+  --card-bg:           var(--color-surface);
+  --border:            var(--color-border);
+  --text-primary:      var(--color-text);
+  --text-secondary:    var(--color-secondary);
+  --text-muted:        var(--color-muted);
+  --success:           var(--color-success);
+  --warning:           var(--color-warning);
+  --error:             var(--color-danger);
+  --radius:            14px;
+  --radius-sm:         8px;
 }
 
+/* Base resets using tokens */
 body {
-  font-family: var(--font-sans);
-  background: var(--body-bg);
-  color: var(--text-primary);
+  font-family: var(--font-body);
+  background: var(--color-bg);
+  color: var(--color-text);
   line-height: 1.5;
   font-size: 14px;
 }
 
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-heading);
+  color: var(--color-primary);
+}
+
 button {
-  font-family: var(--font-sans);
+  font-family: var(--font-body);
   cursor: pointer;
 }
 
 input, textarea, select {
-  font-family: var(--font-sans);
+  font-family: var(--font-body);
+}
+
+/* Respect users who prefer less motion — disable transitions / animations. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 .card {
-  background: var(--card-bg);
-  border: 1px solid var(--border);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: var(--radius);
   padding: 20px;
 }
 
+/* ── Buttons ───────────────────────────────────────────── */
 .btn {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   padding: 8px 16px;
-  border-radius: var(--radius-sm);
+  border-radius: 6px;
   border: none;
   font-size: 14px;
   font-weight: 500;
+  font-family: var(--font-body);
   cursor: pointer;
-  transition: opacity 0.15s;
+  transition: background 150ms ease, color 150ms ease, border-color 150ms ease, opacity 150ms ease;
 }
 
-.btn:hover { opacity: 0.85; }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn:focus-visible { outline: 2px solid var(--color-cta); outline-offset: 2px; }
 
 .btn-primary {
-  background: var(--accent, #6366F1);
-  color: #fff;
+  background: var(--color-cta);
+  color: #FFFFFF;
 }
+.btn-primary:hover:not(:disabled) { background: var(--color-cta-hover); }
 
+/* Ghost / secondary — transparent fill, CTA-blue outline + text. */
 .btn-secondary {
-  background: var(--body-bg);
-  color: var(--text-primary);
-  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--color-cta);
+  border: 1px solid var(--color-cta);
 }
+.btn-secondary:hover:not(:disabled) { background: var(--color-cta-light); }
 
 .btn-danger {
-  background: #FEF2F2;
-  color: var(--error);
-  border: 1px solid #FECACA;
+  background: var(--color-danger);
+  color: #FFFFFF;
 }
+.btn-danger:hover:not(:disabled) { opacity: 0.9; }
 
 .input {
   width: 100%;
   padding: 8px 12px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
   font-size: 14px;
   outline: none;
-  transition: border-color 0.15s;
-  background: var(--card-bg);
+  transition: border-color 150ms ease;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-family: var(--font-body);
 }
 
-.input:focus {
-  border-color: var(--accent, #6366F1);
-}
+.input:focus { border-color: var(--color-cta); }
+.input:focus-visible { outline: 2px solid var(--color-cta); outline-offset: 1px; }
 
 .label {
   display: block;
   font-size: 13px;
   font-weight: 500;
-  color: var(--text-secondary);
+  color: var(--color-secondary);
   margin-bottom: 6px;
 }
 
 .section-title {
+  font-family: var(--font-heading);
   font-size: 16px;
   font-weight: 600;
   margin-bottom: 16px;
+  color: var(--color-primary);
 }
+
+/* ── Tables ─────────────────────────────────────────────── */
+table thead {
+  background: var(--color-primary);
+  color: #FFFFFF;
+  font-family: var(--font-heading);
+}
+table tbody tr { transition: background 150ms ease; }
+table tbody tr:hover { background: var(--color-cta-light); }
+table td, table th { border-bottom: 1px solid var(--color-border); }
 
 .toast-container {
   position: fixed;
@@ -126,9 +190,9 @@ input, textarea, select {
   animation: slideIn 0.2s ease;
 }
 
-.toast-success { background: #F0FDF4; color: #16A34A; border: 1px solid #BBF7D0; }
-.toast-error { background: #FEF2F2; color: #DC2626; border: 1px solid #FECACA; }
-.toast-info { background: #EFF6FF; color: #2563EB; border: 1px solid #BFDBFE; }
+.toast-success { background: #F0FDF4; color: var(--color-success); border: 1px solid #BBF7D0; }
+.toast-error { background: #FEF2F2; color: var(--color-danger); border: 1px solid #FECACA; }
+.toast-info { background: var(--color-cta-light); color: var(--color-cta); border: 1px solid #BFDBFE; }
 
 @keyframes slideIn {
   from { transform: translateX(100%); opacity: 0; }
@@ -142,10 +206,10 @@ input, textarea, select {
   display: inline-block;
 }
 
-.status-dot-green { background: var(--success); }
-.status-dot-amber { background: var(--warning); }
-.status-dot-red { background: var(--error); }
-.status-dot-gray { background: var(--text-muted); }
+.status-dot-green { background: var(--color-success); }
+.status-dot-amber { background: var(--color-warning); }
+.status-dot-red { background: var(--color-danger); }
+.status-dot-gray { background: var(--color-muted); }
 
 .badge {
   display: inline-flex;
@@ -157,11 +221,18 @@ input, textarea, select {
   font-weight: 500;
 }
 
-.badge-blue { background: #EFF6FF; color: #2563EB; }
-.badge-green { background: #F0FDF4; color: #16A34A; }
-.badge-amber { background: #FFFBEB; color: #D97706; }
-.badge-red { background: #FEF2F2; color: #DC2626; }
-.badge-gray { background: #F4F4F5; color: #52525B; }
+/* New token-driven badge classes (preferred). */
+.badge-success { background: #DCFCE7; color: var(--color-success); }
+.badge-warning { background: #FEF3C7; color: var(--color-warning); }
+.badge-danger  { background: #FEE2E2; color: var(--color-danger);  }
+.badge-muted   { background: var(--color-border); color: var(--color-muted); }
+
+/* Legacy badge names — kept as aliases so existing JSX renders. */
+.badge-blue  { background: var(--color-cta-light); color: var(--color-cta); }
+.badge-green { background: #DCFCE7; color: var(--color-success); }
+.badge-amber { background: #FEF3C7; color: var(--color-warning); }
+.badge-red   { background: #FEE2E2; color: var(--color-danger); }
+.badge-gray  { background: var(--color-border); color: var(--color-muted); }
 
 .grid-2 {
   display: grid;

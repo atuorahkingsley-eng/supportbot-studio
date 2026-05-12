@@ -36,6 +36,12 @@ export default function WebhookSettings() {
     events: [],
   })
   const [testing, setTesting] = useState({})
+  // One-time secret reveal — populated by POST/regenerate responses, then
+  // cleared when the user dismisses the modal. Once cleared, the plaintext
+  // is gone from the UI forever; only the masked form lives in `webhooks`.
+  const [revealedSecret, setRevealedSecret] = useState(null) // { secret, webhookId, isRotation }
+  const [secretCopied, setSecretCopied] = useState(false)
+  const [regenerating, setRegenerating] = useState({})
 
   useEffect(() => {
     fetch('/api/webhooks', { credentials: 'include' }).then(r => r.json()).then(setWebhooks).catch(() => {})
@@ -65,12 +71,11 @@ export default function WebhookSettings() {
 
   const addWebhook = async () => {
     if (!form.webhook_url.trim()) return
-    if (form.platform === 'custom_https' && !form.secret.trim()) {
-      addToast('Custom webhooks require an HMAC secret', 'error')
-      return
-    }
     // Build a clean payload — only include secret/events for custom_https,
     // since the backend validator rejects them on managed platforms.
+    // Secret is optional for custom_https now: backend auto-generates one
+    // via secrets.token_hex(32) when omitted, and surfaces it ONCE in the
+    // response so we can show the user a one-time copy modal.
     const payload = {
       platform: form.platform,
       webhook_url: form.webhook_url,
@@ -78,7 +83,7 @@ export default function WebhookSettings() {
       enabled: form.enabled,
     }
     if (form.platform === 'custom_https') {
-      payload.secret = form.secret
+      if (form.secret.trim()) payload.secret = form.secret
       // Empty list → null = no per-event filter (dispatcher fires every event).
       payload.events = form.events.length > 0 ? JSON.stringify(form.events) : null
     }
@@ -94,15 +99,70 @@ export default function WebhookSettings() {
         addToast(wh.detail || 'Failed to add webhook', 'error')
         return
       }
-      setWebhooks(prev => [...prev, wh])
+      // Capture the plaintext secret BEFORE storing the webhook in state —
+      // we replace it with the masked form for the list so the cleartext
+      // never lingers anywhere except inside the modal.
+      const plaintext = wh.platform === 'custom_https' && wh.secret && !wh.secret.startsWith('\u2022')
+        ? wh.secret
+        : null
+      const masked = { ...wh, secret: plaintext ? '\u2022'.repeat(28) + plaintext.slice(-4) : wh.secret }
+      setWebhooks(prev => [...prev, masked])
       setForm({
         platform: 'slack', webhook_url: '', notify_on: 'escalation',
         enabled: true, secret: '', events: [],
       })
-      addToast('Webhook added!', 'success')
+      if (plaintext) {
+        setRevealedSecret({ secret: plaintext, webhookId: wh.id, isRotation: false })
+        setSecretCopied(false)
+      } else {
+        addToast('Webhook added!', 'success')
+      }
     } catch {
       addToast('Failed to add webhook', 'error')
     }
+  }
+
+  const regenerateSecret = async (wh) => {
+    const ok = window.confirm(
+      'This will invalidate the old secret. Any active integrations using it will break. Continue?'
+    )
+    if (!ok) return
+    setRegenerating(prev => ({ ...prev, [wh.id]: true }))
+    try {
+      const r = await fetch(`/api/webhooks/${wh.id}/regenerate-secret`, {
+        method: 'POST',
+        credentials: 'include',
+      })
+      const updated = await r.json()
+      if (!r.ok) {
+        addToast(updated.detail || 'Failed to regenerate secret', 'error')
+        return
+      }
+      const plaintext = updated.secret
+      const masked = { ...updated, secret: '\u2022'.repeat(28) + plaintext.slice(-4) }
+      setWebhooks(prev => prev.map(w => w.id === updated.id ? masked : w))
+      setRevealedSecret({ secret: plaintext, webhookId: updated.id, isRotation: true })
+      setSecretCopied(false)
+    } catch {
+      addToast('Failed to regenerate secret', 'error')
+    } finally {
+      setRegenerating(prev => ({ ...prev, [wh.id]: false }))
+    }
+  }
+
+  const copyRevealedSecret = async () => {
+    if (!revealedSecret) return
+    try {
+      await navigator.clipboard.writeText(revealedSecret.secret)
+      setSecretCopied(true)
+    } catch {
+      addToast('Copy failed — select and copy manually', 'error')
+    }
+  }
+
+  const dismissRevealedSecret = () => {
+    setRevealedSecret(null)
+    setSecretCopied(false)
   }
 
   const deleteWebhook = async (id) => {
@@ -207,10 +267,11 @@ export default function WebhookSettings() {
                 autoComplete="off"
                 value={form.secret}
                 onChange={e => setForm(prev => ({ ...prev, secret: e.target.value }))}
-                placeholder="optional secret key (required for custom HTTPS)"
+                placeholder="leave blank to auto-generate a 256-bit secret"
               />
               <div style={{ color: 'var(--text-muted)', fontSize: 11, marginTop: 4 }}>
                 Used to sign each request body — receivers verify via the X-SupportBot-Signature header.
+                If you leave this blank, we'll generate one and show it to you once.
               </div>
             </div>
             <div>
@@ -237,7 +298,7 @@ export default function WebhookSettings() {
         <button
           className="btn btn-primary"
           onClick={addWebhook}
-          disabled={!form.webhook_url.trim() || (form.platform === 'custom_https' && !form.secret.trim())}
+          disabled={!form.webhook_url.trim()}
         >
           + Add Webhook
         </button>
@@ -280,6 +341,14 @@ export default function WebhookSettings() {
                 <div style={{ color: 'var(--text-muted)', fontSize: 12, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {wh.webhook_url} · {NOTIFY_OPTIONS.find(o => o.value === wh.notify_on)?.label}
                 </div>
+                {wh.platform === 'custom_https' && wh.secret_generated && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4, fontSize: 12 }}>
+                    <span className="badge badge-green">Secret set</span>
+                    <code style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'monospace' }}>
+                      {wh.secret}
+                    </code>
+                  </div>
+                )}
               </div>
               <div style={{ display: 'flex', gap: 6 }}>
                 <button
@@ -290,6 +359,17 @@ export default function WebhookSettings() {
                 >
                   {testing[wh.id] ? 'Testing...' : 'Test'}
                 </button>
+                {wh.platform === 'custom_https' && (
+                  <button
+                    className="btn btn-secondary"
+                    style={{ fontSize: 12, padding: '4px 10px' }}
+                    onClick={() => regenerateSecret(wh)}
+                    disabled={regenerating[wh.id]}
+                    title="Generate a new HMAC secret — old one stops working immediately"
+                  >
+                    {regenerating[wh.id] ? 'Rotating...' : 'Regenerate'}
+                  </button>
+                )}
                 <button
                   className="btn btn-secondary"
                   style={{ fontSize: 12, padding: '4px 10px' }}
@@ -307,6 +387,55 @@ export default function WebhookSettings() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* One-time secret display modal — visible only after a fresh
+          create/regenerate response carries a plaintext `secret`. The
+          plaintext lives in component state for the lifetime of this
+          modal and is dropped the moment it closes. */}
+      {revealedSecret && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 1000,
+          }}
+          onClick={dismissRevealedSecret}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: 'var(--card-bg)', border: '1px solid var(--border)',
+              borderRadius: 10, padding: 24, maxWidth: 540, width: '92%',
+              boxShadow: '0 10px 40px rgba(0,0,0,0.3)',
+            }}
+          >
+            <h3 style={{ marginTop: 0, marginBottom: 8 }}>
+              {revealedSecret.isRotation ? 'New webhook secret' : 'Webhook secret generated'}
+            </h3>
+            <p style={{ color: 'var(--text-secondary)', fontSize: 13, marginBottom: 16 }}>
+              Copy this secret now — <strong>this is the only time we'll show it.</strong>{' '}
+              Use it on your receiver to verify the <code>X-SupportBot-Signature</code> header.
+            </p>
+            <div style={{
+              background: 'var(--body-bg)', border: '1px solid var(--border)',
+              borderRadius: 6, padding: 12, marginBottom: 12,
+              fontFamily: 'monospace', fontSize: 13, wordBreak: 'break-all',
+            }}>
+              {revealedSecret.secret}
+            </div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button className="btn btn-secondary" onClick={copyRevealedSecret}>
+                {secretCopied ? 'Copied \u2713' : 'Copy'}
+              </button>
+              <button className="btn btn-primary" onClick={dismissRevealedSecret}>
+                Done
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

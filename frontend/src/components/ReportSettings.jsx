@@ -51,7 +51,7 @@ export default function ReportSettings() {
             />
             <div style={{
               position: 'absolute', inset: 0,
-              background: schedule.enabled ? 'var(--accent, #6366F1)' : 'var(--border)',
+              background: schedule.enabled ? 'var(--color-cta)' : 'var(--border)',
               borderRadius: 999,
               transition: 'background 0.2s',
             }} />
@@ -128,12 +128,12 @@ export default function ReportSettings() {
                   padding: '6px 12px',
                   borderRadius: 6,
                   border: '1px solid var(--border)',
-                  background: schedule.send_on_day === i ? 'var(--accent, #6366F1)' : 'var(--body-bg)',
+                  background: schedule.send_on_day === i ? 'var(--color-cta)' : 'var(--body-bg)',
                   color: schedule.send_on_day === i ? '#fff' : 'var(--text-primary)',
                   fontSize: 13,
                   cursor: 'pointer',
                   fontWeight: 500,
-                  transition: 'all 0.15s',
+                  transition: 'background 150ms ease, color 150ms ease',
                 }}
               >
                 {day.slice(0, 3)}

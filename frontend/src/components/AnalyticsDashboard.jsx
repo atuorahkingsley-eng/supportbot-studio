@@ -24,7 +24,7 @@ function HourlyChart({ data }) {
         <div key={hour} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, gap: 2 }}>
           <div title={`${hour}:00 — ${count} messages`} style={{
             width: '100%', height: Math.max(4, (count / max) * 72),
-            background: 'var(--accent, #6366F1)', borderRadius: '3px 3px 0 0',
+            background: 'var(--color-cta)', borderRadius: '3px 3px 0 0',
             opacity: count > 0 ? 1 : 0.15, transition: 'height 0.3s', cursor: 'default',
           }} />
           {hour % 6 === 0 && <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{hour}</div>}
@@ -39,7 +39,15 @@ function LanguageChart({ data }) {
   if (!data || data.length === 0) return (
     <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>No language data yet</div>
   )
-  const colors = ['#6366F1', '#22C55E', '#F59E0B', '#EF4444', '#8B5CF6', '#06B6D4', '#EC4899']
+  const colors = [
+    'var(--color-cta)',
+    'var(--color-success)',
+    'var(--color-warning)',
+    'var(--color-danger)',
+    'var(--color-secondary)',
+    'var(--color-cta-hover)',
+    'var(--color-muted)',
+  ]
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       {data.slice(0, 6).map(({ language, count, pct }, i) => (
@@ -101,9 +109,10 @@ function CustomersSection() {
               onClick={() => { setFilter(id); setSelected(null) }}
               style={{
                 padding: '4px 12px', borderRadius: 6, border: '1px solid var(--border)', cursor: 'pointer',
-                background: filter === id ? 'var(--accent)' : 'var(--body-bg)',
+                background: filter === id ? 'var(--color-cta)' : 'var(--body-bg)',
                 color: filter === id ? '#fff' : 'var(--text-secondary)',
                 fontSize: 12, fontWeight: 500,
+                transition: 'background 150ms ease, color 150ms ease',
               }}
             >{label}</button>
           ))}
@@ -121,9 +130,10 @@ function CustomersSection() {
                 onClick={() => loadHistory(v)}
                 style={{
                   padding: '10px 12px', borderRadius: 8, cursor: 'pointer',
-                  border: `1px solid ${selected?.visitor_id === v.visitor_id ? 'var(--accent)' : 'var(--border)'}`,
-                  background: selected?.visitor_id === v.visitor_id ? '#F5F3FF' : '#fff',
+                  border: `1px solid ${selected?.visitor_id === v.visitor_id ? 'var(--color-cta)' : 'var(--border)'}`,
+                  background: selected?.visitor_id === v.visitor_id ? 'var(--color-cta-light)' : 'var(--color-surface)',
                   display: 'flex', gap: 10, alignItems: 'center',
+                  transition: 'background 150ms ease, border-color 150ms ease',
                 }}
               >
                 <div style={{ fontSize: 22 }}>{v.visit_count > 1 ? '🔄' : '👤'}</div>
@@ -155,7 +165,7 @@ function CustomersSection() {
           {history ? (
             <>
               {history.notes && (
-                <div style={{ background: '#F5F3FF', border: '1px solid #DDD6FE', borderRadius: 8, padding: '10px 12px', marginBottom: 12, fontSize: 13, color: '#4C1D95' }}>
+                <div style={{ background: 'var(--color-cta-light)', border: '1px solid var(--color-border)', borderRadius: 8, padding: '10px 12px', marginBottom: 12, fontSize: 13, color: 'var(--color-cta)' }}>
                   🧠 {history.notes}
                 </div>
               )}
@@ -234,13 +244,13 @@ export default function AnalyticsDashboard() {
           label="Auto-Reply Rate" icon="⚡"
           value={summary ? `${summary.auto_reply_rate}%` : null}
           sub={summary ? `${summary.auto_reply_count} instant replies` : null}
-          accent="#16A34A"
+          accent="var(--color-success)"
         />
         <StatCard
           label="Avg Rating" icon="⭐"
           value={summary?.avg_rating ? `${summary.avg_rating}/4` : 'N/A'}
           sub={`Resolution: ${summary?.resolution_rate ?? 0}%`}
-          accent="#D97706"
+          accent="var(--color-warning)"
         />
       </div>
 
@@ -250,19 +260,19 @@ export default function AnalyticsDashboard() {
           label="Returning Visitors" icon="🧠"
           value={summary?.returning_visitors ?? 0}
           sub={`of ${summary?.total_visitors ?? 0} total visitors`}
-          accent="#8B5CF6"
+          accent="var(--color-cta)"
         />
         <StatCard
           label="Leads Captured" icon="🎯"
           value={summary?.total_leads ?? 0}
           sub="from sales agent"
-          accent="#F59E0B"
+          accent="var(--color-warning)"
         />
         <StatCard
           label="Voice Messages" icon="🎤"
           value={summary?.voice_messages ?? 0}
           sub={summary?.voice_rate ? `${summary.voice_rate}% of messages` : null}
-          accent="#06B6D4"
+          accent="var(--color-cta-hover)"
         />
       </div>
 
@@ -292,9 +302,10 @@ export default function AnalyticsDashboard() {
           <button key={id} onClick={() => setActiveSection(id)} style={{
             padding: '8px 16px', border: 'none', background: 'none', cursor: 'pointer',
             fontWeight: 500, fontSize: 14,
-            color: activeSection === id ? 'var(--accent)' : 'var(--text-secondary)',
-            borderBottom: `2px solid ${activeSection === id ? 'var(--accent)' : 'transparent'}`,
+            color: activeSection === id ? 'var(--color-cta)' : 'var(--text-secondary)',
+            borderBottom: `2px solid ${activeSection === id ? 'var(--color-cta)' : 'transparent'}`,
             marginBottom: -2,
+            transition: 'color 150ms ease, border-color 150ms ease',
           }}>{label}</button>
         ))}
       </div>
