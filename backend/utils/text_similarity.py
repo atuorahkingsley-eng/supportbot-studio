@@ -44,7 +44,7 @@ STOP_WORDS = {
 
 def _extract_keywords(text: str) -> list:
     """Extract meaningful words, removing stop words."""
-    words = re.findall(r'[a-z]+', text)
+    words = re.findall(r"[\w']+", text.lower())
     return [w for w in words if w not in STOP_WORDS and len(w) > 1]
 
 
