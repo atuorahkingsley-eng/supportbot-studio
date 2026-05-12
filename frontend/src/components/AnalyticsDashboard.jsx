@@ -93,9 +93,14 @@ function CustomersSection() {
   const loadHistory = async (visitor) => {
     setSelected(visitor)
     setHistory(null)
-    const r = await fetch(`/api/visitors/${visitor.visitor_id}/history`, { credentials: 'include' })
-    const data = await r.json()
-    setHistory(data)
+    try {
+      const r = await fetch(`/api/visitors/${visitor.visitor_id}/history`, { credentials: 'include' })
+      if (!r.ok) throw new Error(r.statusText)
+      const data = await r.json()
+      setHistory(data)
+    } catch {
+      setHistory([])
+    }
   }
 
   return (
