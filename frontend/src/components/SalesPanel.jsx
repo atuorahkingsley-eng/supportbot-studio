@@ -45,11 +45,21 @@ export default function SalesPanel() {
     }
   }
 
+  function toCSVRow(fields) {
+    return fields.map(f => {
+      const str = String(f ?? '')
+      if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+        return '"' + str.replace(/"/g, '""') + '"'
+      }
+      return str
+    }).join(',')
+  }
+
   const exportLeads = () => {
     const csv = [
-      ['ID', 'Email', 'Name', 'Interest', 'Source', 'Score', 'Date', 'Followed Up'].join(','),
-      ...leads.map(l => [l.id, l.email, l.name || '', l.interest || '', l.source, l.buying_signal_score,
-        new Date(l.created_at).toLocaleDateString(), l.followed_up].join(','))
+      toCSVRow(['ID', 'Email', 'Name', 'Interest', 'Source', 'Score', 'Date', 'Followed Up']),
+      ...leads.map(l => toCSVRow([l.id, l.email, l.name || '', l.interest || '', l.source, l.buying_signal_score,
+        new Date(l.created_at).toLocaleDateString(), l.followed_up]))
     ].join('\n')
     const blob = new Blob([csv], { type: 'text/csv' })
     const a = document.createElement('a')
