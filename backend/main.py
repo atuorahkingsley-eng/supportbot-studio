@@ -125,7 +125,7 @@ def _log_daily_usage() -> None:
             # intent explicit and survives column-order changes.
             stmt = insert_fn(UsageLog).values(**values)
             stmt = stmt.on_conflict_do_update(
-                constraint="uq_usagelog_bot_date",
+                index_elements=["bot_id", "date"],
                 set_={
                     "total_messages": stmt.excluded.total_messages,
                     "ai_messages": stmt.excluded.ai_messages,
