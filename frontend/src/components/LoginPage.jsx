@@ -33,7 +33,16 @@ export default function LoginPage() {
         setError(data.detail || 'Login failed')
         return
       }
-      setUser({ role: 'client', bot_id: data.bot_id, company_name: data.company_name })
+      setUser({
+          role: 'client',
+          bot_id: data.bot_id,
+          company_name: data.company_name,
+          email: data.email || data.bot_id,
+          plan: data.plan ?? 'starter',
+          messages_used: data.messages_used ?? 0,
+          message_limit: data.monthly_message_limit ?? 500,
+          ...data,
+      })
       navigate('/admin')
     } catch {
       setError('Network error. Please try again.')
