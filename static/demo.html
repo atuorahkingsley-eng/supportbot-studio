@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1.0">
+  <title>SupportBot Studio — Live Demo</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont,
+        'Segoe UI', sans-serif;
+      background: #f7f7f7;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+      text-align: center;
+    }
+    .badge {
+      background: #E1F5EE;
+      color: #0F6E56;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 4px 14px;
+      border-radius: 20px;
+      letter-spacing: 0.08em;
+      margin-bottom: 1.5rem;
+      display: inline-block;
+    }
+    h1 {
+      font-size: 2.2rem;
+      color: #1a1a1a;
+      font-weight: 600;
+      line-height: 1.25;
+      margin-bottom: 1rem;
+      max-width: 560px;
+    }
+    p {
+      font-size: 1.05rem;
+      color: #666;
+      line-height: 1.7;
+      max-width: 480px;
+      margin-bottom: 2rem;
+    }
+    .features {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      justify-content: center;
+      margin-bottom: 2.5rem;
+      max-width: 560px;
+    }
+    .feature {
+      background: #fff;
+      border: 1px solid #e0e0e0;
+      border-radius: 8px;
+      padding: 8px 16px;
+      font-size: 13px;
+      color: #444;
+    }
+    .cta {
+      display: inline-block;
+      background: #0F6E56;
+      color: #fff;
+      padding: 12px 28px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      text-decoration: none;
+      margin-bottom: 2.5rem;
+      transition: opacity 0.2s;
+    }
+    .cta:hover { opacity: 0.88; }
+    .arrow {
+      font-size: 13px;
+      color: #0F6E56;
+      font-weight: 500;
+      animation: bounce 1.8s infinite;
+    }
+    @keyframes bounce {
+      0%, 100% { transform: translateY(0); }
+      50%       { transform: translateY(5px); }
+    }
+    @media (max-width: 480px) {
+      h1 { font-size: 1.6rem; }
+    }
+  </style>
+</head>
+<body>
+
+  <span class="badge">LIVE DEMO</span>
+
+  <h1>See SupportBot Studio<br>in action</h1>
+
+  <p>
+    Click the chat bubble in the bottom-right corner.
+    Ask anything — this is a real AI bot running live,
+    powered by Claude.
+  </p>
+
+  <div class="features">
+    <span class="feature">⚡ Instant auto-replies</span>
+    <span class="feature">🎯 Lead capture</span>
+    <span class="feature">🚨 Human escalation</span>
+    <span class="feature">🌍 Multi-language</span>
+    <span class="feature">🔗 Webhook ready</span>
+    <span class="feature">📊 Analytics dashboard</span>
+  </div>
+
+  <a class="cta"
+     href="CALENDLY_URL_HERE"
+     target="_blank"
+     rel="noopener noreferrer">
+    Book a 15-min Demo →
+  </a>
+
+  <span class="arrow">↘ chat bubble is down there</span>
+
+  <script
+    src="https://supportbot-studio.onrender.com/widget.js"
+    data-bot-id="bot_fvw4yunr">
+  </script>
+
+</body>
+</html>

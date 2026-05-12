@@ -330,6 +330,14 @@ async def serve_widget():
     )
 
 
+@app.get("/demo")
+async def serve_demo():
+    demo_path = os.path.join(_static_dir, "demo.html")
+    if not os.path.exists(demo_path):
+        return Response("Demo page not found", media_type="text/plain", status_code=404)
+    return FileResponse(demo_path, media_type="text/html")
+
+
 # ── Serve React frontend in production ────────────────────────────────────────
 
 frontend_dist = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist")
@@ -339,7 +347,9 @@ if os.path.isdir(frontend_dist):
     @app.get("/{full_path:path}")
     async def serve_frontend(full_path: str):
         # Don't intercept API routes or widget.js
-        if full_path.startswith("api/") or full_path == "widget.js":
+        if (full_path.startswith("api/")
+                or full_path == "widget.js"
+                or full_path == "demo"):
             from fastapi import HTTPException as FE
             raise FE(status_code=404)
         index = os.path.join(frontend_dist, "index.html")
