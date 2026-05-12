@@ -108,6 +108,7 @@ async def analyze(
         row.personality_traits = traits_json
         row.avoid = profile["avoid"]
         row.raw_samples = profile["raw_samples"]
+        row.generated_at = datetime.utcnow()
         # Re-analysis preserves is_active — tenant doesn't have to re-toggle.
     else:
         row = BrandVoice(
