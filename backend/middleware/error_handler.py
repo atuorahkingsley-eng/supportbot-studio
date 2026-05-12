@@ -52,11 +52,20 @@ class ErrorHandlerMiddleware(BaseHTTPMiddleware):
         except Exception:
             pass
 
-        # Patch receive so the endpoint can still read the body normally
+        # Create a new receive that replays the cached body so the endpoint
+        # can still read the body normally. We keep the original request
+        # object so that request.state (populated by upstream middleware) is
+        # NOT discarded.
+        original_receive = request.receive
+
         async def receive():
             return {"type": "http.request", "body": body_bytes}
 
-        request = Request(request.scope, receive)
+        # Patch the receive callable in place rather than creating a new
+        # Request — re-creating the Request from scope discards the
+        # request.state dict that upstream middleware may have populated
+        # (auth, rate-limit, tenant).
+        request._receive = receive
 
         try:
             response = await call_next(request)
