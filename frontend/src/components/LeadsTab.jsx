@@ -137,21 +137,23 @@ export default function LeadsTab() {
     return p
   }, [typeFilter, statusFilter, rangeFilter])
 
-  const fetchList = useCallback(async () => {
+  const fetchList = useCallback(async (options = {}) => {
     setLoading(true)
     try {
       const params = buildParams()
       params.set('page', page)
       params.set('per_page', PER_PAGE)
-      const r = await fetch(`/api/leads?${params.toString()}`, { credentials: 'include' })
+      const r = await fetch(`/api/leads?${params.toString()}`, {
+        credentials: 'include',
+        signal: options.signal,
+      })
       if (r.ok) setData(await r.json())
-    } catch {
+    } catch (err) {
+      if (err.name === 'AbortError') return
       addToastRef.current?.('Failed to load leads', 'error')
     } finally {
       setLoading(false)
     }
-    // addToast is intentionally accessed via the ref above so it does not
-    // need to be in this dep array.
   }, [buildParams, page])
 
   const fetchSummary = useCallback(async () => {
@@ -161,14 +163,26 @@ export default function LeadsTab() {
     } catch {}
   }, [])
 
+  useEffect(() => {
+    const controller = new AbortController()
+    fetchList({ signal: controller.signal })
+    return () => controller.abort()
+  }, [fetchList])
+
   useEffect(() => { fetchSummary() }, [fetchSummary])
-  useEffect(() => { fetchList() }, [fetchList])
 
   // Filter changes reset pagination — otherwise you can land on a now-empty
   // page 4 and see "no results" when there are 3 pages of data.
   useEffect(() => { setPage(1) }, [typeFilter, statusFilter, rangeFilter])
 
   const updateStatus = async (id, newStatus) => {
+    // Save previous state for rollback
+    const prevData = data
+    // Optimistic update
+    setData(prev => ({
+      ...prev,
+      items: prev.items.map(it => it.id === id ? { ...it, status: newStatus } : it),
+    }))
     try {
       const r = await fetch(`/api/leads/${id}/status`, {
         method: 'PATCH',
@@ -177,13 +191,9 @@ export default function LeadsTab() {
         body: JSON.stringify({ status: newStatus }),
       })
       if (!r.ok) throw new Error()
-      // Optimistic update keeps the table responsive. Server is the source
-      // of truth — a background refetch would be safer but more flicker.
-      setData(prev => ({
-        ...prev,
-        items: prev.items.map(it => it.id === id ? { ...it, status: newStatus } : it),
-      }))
     } catch {
+      // Revert on failure
+      setData(prevData)
       addToastRef.current?.('Failed to update status', 'error')
     }
   }
