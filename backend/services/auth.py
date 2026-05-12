@@ -108,7 +108,13 @@ async def get_current_client(request: Request, db: Session = Depends(get_db)):
     if is_token_revoked(payload.get("jti"), db):
         raise HTTPException(status_code=401, detail="Token has been revoked")
 
-    tenant = db.query(Tenant).filter(Tenant.bot_id == payload["bot_id"]).first()
+    bot_id = payload.get("bot_id")
+    if not bot_id:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid token — missing bot_id claim",
+        )
+    tenant = db.query(Tenant).filter(Tenant.bot_id == bot_id).first()
     if not tenant or not tenant.is_active:
         raise HTTPException(status_code=403, detail="Account inactive or not found")
 
