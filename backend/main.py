@@ -62,28 +62,21 @@ def _log_daily_usage() -> None:
     monthly billing roll-up.
     """
     from datetime import date
-    from backend.database import Tenant, Message, Lead, UsageLog
-    from sqlalchemy import func
+    from backend.database import Tenant, Message, Lead, UsageLog, get_dialect
     from sqlalchemy.dialects.postgresql import insert as pg_insert
     from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
-    db = SessionLocal()
-    today = date.today()
-    try:
-        # Pick the right INSERT constructor up-front. Both Postgres and SQLite
-        # have ON CONFLICT, but SQLAlchemy exposes them via dialect-specific
-        # `insert()` functions with slightly different return shapes.
-        db_url = str(settings.database_url)
-        if "postgresql" in db_url or "postgres" in db_url:
-            insert_fn = pg_insert
-        elif "sqlite" in db_url:
-            insert_fn = sqlite_insert
-        else:
-            raise RuntimeError(
-                f"Unsupported database dialect: {db_url}. "
-                "SupportBot Studio supports SQLite and PostgreSQL only."
-            )
+    dialect = get_dialect(db)
+    if dialect == "postgresql":
+        insert_fn = pg_insert
+    elif dialect == "sqlite":
+        insert_fn = sqlite_insert
+    else:
+        raise RuntimeError(f"Unsupported database dialect: {dialect}")
 
+    today = date.today()
+
+    try:
         for tenant in db.query(Tenant).filter(Tenant.is_active == True).all():
             bid = tenant.bot_id
 

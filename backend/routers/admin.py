@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from typing import Optional, List
 
 from backend.database import (
-    get_db, Tenant, SuperAdmin, BotConfig, FAQEntry, Conversation,
+    get_db, get_dialect, Tenant, SuperAdmin, BotConfig, FAQEntry, Conversation,
     Message, Lead, UsageLog, ErrorLog, generate_bot_id, generate_api_key,
     WebhookConfig, ReportSchedule, Visitor, VisitorConversation,
     SalesConfig, BrandVoice, PendingEscalation,
@@ -480,7 +480,7 @@ def system_health(
     # actual size; on any failure we log and surface 0 (rather than crashing
     # the whole system-health endpoint, which is the operator's lifeline).
     db_size_mb: float = 0.0
-    dialect = db.bind.dialect.name
+    dialect = get_dialect(db)
     try:
         if dialect == "sqlite":
             db_path = settings.database_url.replace("sqlite:///", "")

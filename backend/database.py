@@ -413,6 +413,33 @@ def get_db():
         db.close()
 
 
+def get_dialect(db) -> str:
+    """Return the canonical dialect name for the bound database session.
+
+    Supports ``postgresql`` and ``sqlite`` only.
+    Raises RuntimeError on unsupported dialects.
+
+    Args:
+        db: Active SQLAlchemy Session.
+
+    Returns:
+        ``'postgresql'`` or ``'sqlite'``.
+
+    Raises:
+        RuntimeError: If dialect is not supported.
+    """
+    name = db.bind.dialect.name
+    if name == "postgresql":
+        return "postgresql"
+    elif name == "sqlite":
+        return "sqlite"
+    else:
+        raise RuntimeError(
+            f"Unsupported database dialect: {name}. "
+            "SupportBot Studio supports SQLite and PostgreSQL only."
+        )
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # LEGACY: This shim predates Alembic. DO NOT add new columns here.
 # Write a proper Alembic migration under backend/alembic/versions/ instead.

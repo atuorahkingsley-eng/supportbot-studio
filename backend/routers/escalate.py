@@ -10,7 +10,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from backend.database import (
-    get_db, Conversation, Message, WebhookConfig, BotConfig, Tenant,
+    get_db, get_dialect, Conversation, Message, WebhookConfig, BotConfig, Tenant,
     PendingEscalation, ErrorLog, Lead,
 )
 from backend.services.telegram_notify import send_telegram_message
@@ -321,7 +321,7 @@ async def _do_escalate(
     # message so the caller knows to retry.
     all_results = list(results.values())
     if all_results and not any(all_results):
-        dialect = db.bind.dialect.name if db.bind else ""
+        dialect = get_dialect(db)
         if dialect == "postgresql":
             stmt = pg_insert(PendingEscalation).values(
                 bot_id=bot_id, session_id=session_id,
