@@ -45,11 +45,16 @@ async def scheduled_health_check():
             checks_failed.append(f"Anthropic API: {str(e)[:100]}")
 
     # ── 2. Database ────────────────────────────────────────────────────────────
+    # Was: ``db = SessionLocal(); db.execute(...); db.close()`` — if execute()
+    # raised, the connection was leaked because close() never ran. Wrap in
+    # try/finally so close() fires unconditionally, even on exception.
     try:
         from sqlalchemy import text
         db = SessionLocal()
-        db.execute(text("SELECT 1"))
-        db.close()
+        try:
+            db.execute(text("SELECT 1"))
+        finally:
+            db.close()
     except Exception as e:
         checks_failed.append(f"Database: {str(e)[:100]}")
 
@@ -65,14 +70,19 @@ async def scheduled_health_check():
         pass
 
     # ── 4. Error rate (last hour) ──────────────────────────────────────────────
+    # Same leak pattern as #2 — wrap the query in try/finally so close() runs
+    # even if the query raises. Pass continues to swallow read failures since
+    # the health monitor is best-effort.
     try:
         db = SessionLocal()
-        one_hour_ago = datetime.utcnow() - timedelta(hours=1)
-        recent_failed = db.query(ErrorLog).filter(
-            ErrorLog.created_at > one_hour_ago,
-            ErrorLog.status == "failed",
-        ).count()
-        db.close()
+        try:
+            one_hour_ago = datetime.utcnow() - timedelta(hours=1)
+            recent_failed = db.query(ErrorLog).filter(
+                ErrorLog.created_at > one_hour_ago,
+                ErrorLog.status == "failed",
+            ).count()
+        finally:
+            db.close()
         if recent_failed > 10:
             checks_failed.append(f"High error rate: {recent_failed} failed errors in last hour")
     except Exception:
