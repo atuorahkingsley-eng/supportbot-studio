@@ -457,12 +457,35 @@ def system_health(
     _: dict = Depends(get_super_admin),
 ):
     import os
+    import structlog
+    from sqlalchemy import text
     from backend.config import settings
 
-    db_path = settings.database_url.replace("sqlite:///", "")
-    db_size_mb = 0
-    if os.path.exists(db_path):
-        db_size_mb = round(os.path.getsize(db_path) / 1024 / 1024, 2)
+    log = structlog.get_logger(__name__)
+
+    # DB size is dialect-specific. On SQLite the database is a single file
+    # we can stat directly; on Postgres there is no on-disk file accessible
+    # to the app process, so we ask the server via pg_database_size().
+    # Pre-fix this only ran the SQLite branch — on Postgres it stripped a
+    # non-matching prefix, then os.path.exists returned False, then we
+    # silently reported 0 MB to the operator. Postgres now returns the
+    # actual size; on any failure we log and surface 0 (rather than crashing
+    # the whole system-health endpoint, which is the operator's lifeline).
+    db_size_mb: float = 0.0
+    dialect = db.bind.dialect.name
+    try:
+        if dialect == "sqlite":
+            db_path = settings.database_url.replace("sqlite:///", "")
+            if os.path.exists(db_path):
+                db_size_mb = round(os.path.getsize(db_path) / 1024 / 1024, 2)
+        elif dialect == "postgresql":
+            size_bytes = db.execute(
+                text("SELECT pg_database_size(current_database())")
+            ).scalar()
+            if size_bytes is not None:
+                db_size_mb = round(int(size_bytes) / 1024 / 1024, 2)
+    except Exception as exc:
+        log.warning("admin.db_size_lookup_failed", dialect=dialect, error=str(exc)[:300])
 
     tenants_count = db.query(Tenant).count()
     faq_count = db.query(FAQEntry).count()
