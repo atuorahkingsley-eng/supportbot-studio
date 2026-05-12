@@ -447,6 +447,12 @@ def _migrate_columns():
         ("visitor_conversations", "bot_id TEXT DEFAULT 'default'"),
         ("sales_configs", "bot_id TEXT DEFAULT 'default'"),
         ("leads", "bot_id TEXT DEFAULT 'default'"),
+        # Leads unified model — added to model before Alembic
+        # migrations existed for them. Kept here as safety net so
+        # older deployments that skip alembic upgrade still get them.
+        ("leads", "phone TEXT"),
+        ("leads", "type TEXT NOT NULL DEFAULT 'lead'"),
+        ("leads", "status TEXT NOT NULL DEFAULT 'new'"),
     ]
     with engine.connect() as conn:
         for table, col_def in migrations:
