@@ -30,7 +30,7 @@ log = structlog.get_logger(__name__)
 # One client per process. timeout=30.0 caps any single call so a hung Anthropic
 # request can't pin a worker — important here because brand-voice analysis is
 # triggered from a user-facing route, not a background job.
-_client = anthropic.Anthropic(api_key=settings.anthropic_api_key, timeout=30.0)
+_client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key, timeout=30.0)
 
 
 # Hard cap on sample text — protects token budget and DB row size.
@@ -130,7 +130,7 @@ async def analyze_brand_voice(samples: str, bot_id: str) -> dict:
     truncated = _truncate_samples(sample_text)
 
     try:
-        response = _client.messages.create(
+        response = await _client.messages.create(
             model="claude-sonnet-4-20250514",
             max_tokens=512,
             messages=[
