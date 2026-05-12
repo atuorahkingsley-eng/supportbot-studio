@@ -40,6 +40,13 @@ export default function EmbedChat() {
   const [salesAction, setSalesAction] = useState(null)
   const [leadEmail, setLeadEmail] = useState('')
   const [leadCapturing, setLeadCapturing] = useState(false)
+  const [escalated, setEscalated] = useState(false)
+  const [escalateFormShown, setEscalateFormShown] = useState(false)
+  const [showEscalateForm, setShowEscalateForm] = useState(false)
+  const [escName, setEscName] = useState('')
+  const [escEmail, setEscEmail] = useState('')
+  const [escPhone, setEscPhone] = useState('')
+  const [escReason, setEscReason] = useState('')
   const [voiceAvailable, setVoiceAvailable] = useState(false)
   const [listening, setListening] = useState(false)
   const [inputMethod, setInputMethod] = useState('text')
@@ -106,6 +113,11 @@ export default function EmbedChat() {
       if (data.is_returning) setIsReturning(true)
       if (data.detected_language) setDetectedLang(data.detected_language)
       if (data.sales_action) setSalesAction(data.sales_action)
+
+      if (data.needs_escalation && !escalated && !escalateFormShown) {
+        setEscalateFormShown(true)
+        setTimeout(() => setShowEscalateForm(true), 800)
+      }
 
       // Notify parent to show badge if widget is closed
       if (window.parent !== window) {
@@ -183,6 +195,33 @@ export default function EmbedChat() {
     finally { setLeadCapturing(false) }
   }
 
+  const handleEscalateSubmit = async (e) => {
+    e.preventDefault()
+    setEscalated(true)
+    setShowEscalateForm(false)
+    try {
+      await fetch('/api/escalate/public', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          bot_id: botId,
+          session_id: sessionId,
+          customer_email: escEmail || null,
+          name: escName || null,
+          email: escEmail || null,
+          phone: escPhone || null,
+          reason: escReason || 'customer_requested',
+        }),
+      })
+    } catch { /* escalation queued fallback */ }
+    setMessages(prev => [...prev, { role: 'assistant', content: 'We\'ve notified our team. Someone will get back to you shortly.' }])
+  }
+
+  const handleEscalateSkip = () => {
+    setEscalated(true)
+    setShowEscalateForm(false)
+  }
+
   if (!config) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', fontFamily: 'sans-serif', color: '#6B7280' }}>
@@ -241,6 +280,31 @@ export default function EmbedChat() {
             {[0, 1, 2].map(i => (
               <div key={i} style={{ width: 6, height: 6, borderRadius: '50%', background: '#9CA3AF', animation: `bounce 1s ${i * 0.15}s infinite` }} />
             ))}
+          </div>
+        )}
+
+        {showEscalateForm && !escalated && (
+          <div style={{ background: '#FFF7ED', border: '1px solid #FED7AA', borderRadius: 12, padding: '14px', margin: '4px 0' }}>
+            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 8, color: '#C2410C' }}>Talk to a human</div>
+            <form onSubmit={handleEscalateSubmit}>
+              <input value={escName} onChange={e => setEscName(e.target.value)} placeholder="Your name" style={{ width: '100%', marginBottom: 6, padding: '7px 10px', border: '1px solid #FED7AA', borderRadius: 6, fontSize: 13, boxSizing: 'border-box' }} />
+              <input value={escEmail} onChange={e => setEscEmail(e.target.value)} placeholder="your@email.com" type="email" required style={{ width: '100%', marginBottom: 6, padding: '7px 10px', border: '1px solid #FED7AA', borderRadius: 6, fontSize: 13, boxSizing: 'border-box' }} />
+              <input value={escPhone} onChange={e => setEscPhone(e.target.value)} placeholder="Phone (optional)" type="tel" style={{ width: '100%', marginBottom: 6, padding: '7px 10px', border: '1px solid #FED7AA', borderRadius: 6, fontSize: 13, boxSizing: 'border-box' }} />
+              <textarea value={escReason} onChange={e => setEscReason(e.target.value)} placeholder="What do you need help with?" rows={2} style={{ width: '100%', marginBottom: 8, padding: '7px 10px', border: '1px solid #FED7AA', borderRadius: 6, fontSize: 13, boxSizing: 'border-box', resize: 'none' }} />
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button type="submit" style={{ flex: 1, background: accent, color: '#fff', border: 'none', padding: '7px 0', borderRadius: 6, cursor: 'pointer', fontWeight: 600, fontSize: 13 }}>Send</button>
+                <button type="button" onClick={handleEscalateSkip} style={{ background: 'transparent', color: '#6B7280', border: '1px solid #D1D5DB', padding: '7px 0', borderRadius: 6, cursor: 'pointer', fontSize: 13, flex: 1 }}>Skip</button>
+              </div>
+            </form>
+          </div>
+        )}
+
+        {!escalated && !showEscalateForm && messages.length >= 2 && (
+          <div style={{ textAlign: 'center', margin: '6px 0' }}>
+            <button onClick={() => setShowEscalateForm(true)} style={{ background: 'transparent', border: '1px solid #D1D5DB', borderRadius: 16, padding: '5px 14px', cursor: 'pointer', fontSize: 12, color: '#6B7280', transition: 'all 0.2s' }}
+              onMouseEnter={e => e.currentTarget.style.borderColor = accent}
+              onMouseLeave={e => e.currentTarget.style.borderColor = '#D1D5DB'}
+            >Request human support</button>
           </div>
         )}
 
