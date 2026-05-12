@@ -15,12 +15,18 @@ Design constraints (mirrors the spec given to KAY):
 """
 
 # ── Environment setup (must run before any backend import) ─────────────────────
-# The boot guard at the bottom of backend/config.py will sys.exit(1) if ENV is
-# not "dev" AND JWT_SECRET_KEY / SUPER_ADMIN_PASSWORD are at defaults. Setting
-# these via os.environ.setdefault keeps a real .env from overriding them.
+# The boot guard at the bottom of backend/config.py will sys.exit(1) if
+# skip_boot_guard is not True AND JWT_SECRET_KEY / SUPER_ADMIN_PASSWORD are at
+# defaults. Setting these via os.environ.setdefault keeps a real .env from
+# overriding them.
+#
+# Two separate env vars control boot guard bypass and dev seeding:
+#   SKIP_BOOT_GUARD — disable the default-secret check (required in tests)
+#   SEED_DEV_DATA  — skip demo-tenant seeding (tests create their own fixtures)
 import os
 
-os.environ.setdefault("ENV", "dev")
+os.environ.setdefault("SKIP_BOOT_GUARD", "true")
+os.environ.setdefault("SEED_DEV_DATA", "false")
 os.environ.setdefault("JWT_SECRET_KEY", "test-jwt-secret-not-for-production-1234567890")
 os.environ.setdefault("SUPER_ADMIN_USERNAME", "test_admin")
 os.environ.setdefault("SUPER_ADMIN_PASSWORD", "test-admin-pw-1")

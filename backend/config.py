@@ -45,6 +45,11 @@ class Settings(BaseSettings):
     health_check_interval_minutes: int = 15
     max_heal_retries: int = 2
 
+    # Boot guard and dev seeding — split into two env vars so operators can
+    # disable the boot guard independently of seeding demo data (or vice versa).
+    skip_boot_guard: bool = False
+    seed_dev_data: bool = False
+
 
 settings = Settings()
 
@@ -54,9 +59,7 @@ DANGEROUS_DEFAULTS = {
     "SUPER_ADMIN_PASSWORD": "changeme123",
 }
 
-ENV = os.getenv("ENV", "production")
-
-if ENV != "dev":
+if not settings.skip_boot_guard:
     for key, default_val in DANGEROUS_DEFAULTS.items():
         actual = os.getenv(key, "")
         if not actual or actual == default_val:

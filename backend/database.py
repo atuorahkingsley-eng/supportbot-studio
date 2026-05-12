@@ -477,7 +477,8 @@ def init_db():
     # finished — anyone who found the URL before the operator created a real
     # tenant would own the platform. Production operators must create the first
     # tenant explicitly via /api/admin/tenants (after super-admin login).
-    if os.getenv("ENV", "production") != "dev":
+    # Controlled by the SEED_DEV_DATA env var, separate from boot-guard bypass.
+    if not settings.seed_dev_data:
         return
 
     db = SessionLocal()
