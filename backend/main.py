@@ -9,7 +9,7 @@ from backend.database import init_db, SessionLocal
 from backend.services.report_scheduler import start_scheduler, stop_scheduler
 from backend.routers import (
     config_api, knowledge, chat, analytics, escalate, webhooks, reports,
-    visitors, sales, brand_voice,
+    visitors, sales, brand_voice, leads,
 )
 from backend.routers import auth_api, admin, health
 from backend.middleware.error_handler import ErrorHandlerMiddleware
@@ -52,15 +52,36 @@ def _reset_monthly_counts():
         db.close()
 
 
-def _log_daily_usage():
-    """APScheduler job: log daily usage stats per tenant."""
+def _log_daily_usage() -> None:
+    """APScheduler job: log daily usage stats per tenant.
+
+    Uses a dialect-aware UPSERT (Postgres ON CONFLICT, SQLite ON CONFLICT)
+    keyed on the new ``uq_usagelog_bot_date`` constraint so two concurrent
+    runs of this job — or a fresh insert racing with a retry — collapse
+    into a single row instead of producing duplicates that corrupt the
+    monthly billing roll-up.
+    """
     from datetime import date
     from backend.database import Tenant, Message, Lead, UsageLog
     from sqlalchemy import func
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+    from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
     db = SessionLocal()
     today = date.today()
     try:
+        # Pick the right INSERT constructor up-front. Both Postgres and SQLite
+        # have ON CONFLICT, but SQLAlchemy exposes them via dialect-specific
+        # `insert()` functions with slightly different return shapes.
+        dialect = db.bind.dialect.name
+        if dialect == "postgresql":
+            insert_fn = pg_insert
+        else:
+            # SQLite path covers local dev + test. The sqlite dialect's
+            # ``on_conflict_do_update`` was added in SQLAlchemy 1.4 and is
+            # present in this project's pinned version.
+            insert_fn = sqlite_insert
+
         for tenant in db.query(Tenant).filter(Tenant.is_active == True).all():
             bid = tenant.bot_id
 
@@ -88,30 +109,33 @@ def _log_daily_usage():
                 func.date(Lead.created_at) == today,
             ).count()
 
-            existing = db.query(UsageLog).filter(
-                UsageLog.bot_id == bid,
-                UsageLog.date == today,
-            ).first()
+            values = dict(
+                bot_id=bid,
+                date=today,
+                total_messages=total,
+                ai_messages=ai,
+                auto_reply_messages=auto,
+                voice_messages=voice,
+                leads_captured=leads,
+                estimated_api_cost=round(ai * 0.003, 4),
+            )
 
-            if existing:
-                existing.total_messages = total
-                existing.ai_messages = ai
-                existing.auto_reply_messages = auto
-                existing.voice_messages = voice
-                existing.leads_captured = leads
-                existing.estimated_api_cost = round(ai * 0.003, 4)
-            else:
-                log = UsageLog(
-                    bot_id=bid,
-                    date=today,
-                    total_messages=total,
-                    ai_messages=ai,
-                    auto_reply_messages=auto,
-                    voice_messages=voice,
-                    leads_captured=leads,
-                    estimated_api_cost=round(ai * 0.003, 4),
-                )
-                db.add(log)
+            # Build INSERT ... ON CONFLICT (bot_id, date) DO UPDATE.
+            # Using the constraint name from the new migration makes the
+            # intent explicit and survives column-order changes.
+            stmt = insert_fn(UsageLog).values(**values)
+            stmt = stmt.on_conflict_do_update(
+                constraint="uq_usagelog_bot_date",
+                set_={
+                    "total_messages": stmt.excluded.total_messages,
+                    "ai_messages": stmt.excluded.ai_messages,
+                    "auto_reply_messages": stmt.excluded.auto_reply_messages,
+                    "voice_messages": stmt.excluded.voice_messages,
+                    "leads_captured": stmt.excluded.leads_captured,
+                    "estimated_api_cost": stmt.excluded.estimated_api_cost,
+                },
+            )
+            db.execute(stmt)
 
         db.commit()
     finally:
@@ -289,6 +313,7 @@ app.include_router(reports.router)        # /api/reports
 app.include_router(visitors.router)       # /api/visitors
 app.include_router(sales.router)          # /api/sales
 app.include_router(brand_voice.router)    # /api/brand-voice
+app.include_router(leads.router)          # /api/leads
 
 
 # ── Serve widget.js ────────────────────────────────────────────────────────────

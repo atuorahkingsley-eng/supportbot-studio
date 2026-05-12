@@ -114,6 +114,15 @@ class RevokedToken(Base):
 class UsageLog(Base):
     __tablename__ = "usage_logs"
 
+    # Per-(tenant, day) row. The unique constraint prevents the duplicate
+    # rows that previously corrupted billing roll-ups when the daily logger
+    # raced with itself (concurrent startup, retry-after-failure, two
+    # APScheduler instances). Upsert logic in main.py:_log_daily_usage uses
+    # this constraint name explicitly for ON CONFLICT.
+    __table_args__ = (
+        UniqueConstraint("bot_id", "date", name="uq_usagelog_bot_date"),
+    )
+
     id = Column(Integer, primary_key=True)
     bot_id = Column(String, nullable=False, index=True)
     date = Column(Date, nullable=False)
@@ -284,14 +293,25 @@ class Lead(Base):
     id = Column(Integer, primary_key=True, index=True)
     bot_id = Column(String, nullable=True, index=True, default="default")
     visitor_id = Column(String, nullable=True)
-    email = Column(String, nullable=False)
+    # email + phone + name are all optional now: the inline lead-capture form
+    # lets visitors Skip every field, in which case we still record a Lead row
+    # (so the buying-signal hit is not lost) but with null contact details.
+    email = Column(String, nullable=True)
     name = Column(String, nullable=True)
+    phone = Column(String, nullable=True)
     interest = Column(String, nullable=True)
     source = Column(String, default="chat_capture")
     buying_signal_score = Column(Integer, default=1)
     conversation_id = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     followed_up = Column(Boolean, default=False)
+    # Unified Lead/Escalation model: type distinguishes buying-intent captures
+    # ("lead") from human-support requests ("escalation"). status drives the
+    # client's pipeline workflow in the Leads tab (new → contacted → qualified
+    # → lost). Both have NOT NULL + server_default so legacy rows backfill on
+    # the migration without a Python pass.
+    type = Column(String, nullable=False, default="lead", server_default="lead", index=True)
+    status = Column(String, nullable=False, default="new", server_default="new", index=True)
 
 
 # ── Brand Voice DNA ───────────────────────────────────────────────────────────
