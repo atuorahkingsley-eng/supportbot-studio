@@ -7,6 +7,7 @@ from datetime import datetime, date, timedelta
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 from pydantic import BaseModel
 from typing import Optional, List
 
@@ -21,6 +22,13 @@ from backend.services.auth import hash_password, get_super_admin, validate_passw
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
 PLAN_PRICES = {"basic": 100, "pro": 200, "enterprise": 400}
+PLAN_LIMITS: dict[str, int] = {
+    "starter": 500,
+    "growth": 2000,
+    "pro": 10000,
+    "enterprise": 999999,
+    "agency": 999999,
+}
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -81,19 +89,7 @@ def create_tenant(
 
     limits = {"basic": 1000, "pro": 5000, "enterprise": 20000}
 
-    # generate_bot_id() returns 8 chars × 36 alphabet — collision is
-    # astronomically unlikely but unhandled it surfaces as a raw 500 from
-    # SQLite IntegrityError. Pre-check and return 409 instead. Retry once
-    # since regenerating is cheap.
     bot_id = generate_bot_id()
-    if db.query(Tenant).filter(Tenant.bot_id == bot_id).first():
-        bot_id = generate_bot_id()
-        if db.query(Tenant).filter(Tenant.bot_id == bot_id).first():
-            raise HTTPException(
-                status_code=409,
-                detail="bot_id collision — please retry the request",
-            )
-
     api_key = generate_api_key()
 
     tenant = Tenant(
@@ -108,13 +104,19 @@ def create_tenant(
         is_active=True,
     )
     db.add(tenant)
-
     # Seed BotConfig for new tenant
     db.add(BotConfig(
         bot_id=bot_id,
         business_name=data.company_name,
     ))
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail=f"bot_id '{bot_id}' already exists",
+        )
     db.refresh(tenant)
 
     base_url = os.getenv("APP_URL", "https://your-app.onrender.com")
@@ -169,6 +171,8 @@ def update_tenant(
 
     if data.plan is not None:
         tenant.plan = data.plan
+        if data.plan in PLAN_LIMITS:
+            tenant.monthly_message_limit = PLAN_LIMITS[data.plan]
     if data.monthly_message_limit is not None:
         tenant.monthly_message_limit = data.monthly_message_limit
     if data.is_active is not None:
@@ -338,9 +342,13 @@ def change_super_password(
     admin = db.query(SuperAdmin).filter(
         SuperAdmin.username == payload["username"]
     ).first()
-    if admin:
-        admin.password_hash = hash_password(new_password)
-        db.commit()
+    if not admin:
+        raise HTTPException(
+            status_code=404,
+            detail="Admin account not found",
+        )
+    admin.password_hash = hash_password(new_password)
+    db.commit()
     return {"ok": True}
 
 
