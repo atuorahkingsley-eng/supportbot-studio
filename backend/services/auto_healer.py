@@ -178,14 +178,27 @@ async def attempt_heal(error_log: ErrorLog, db: Session) -> bool:
             upload_dir = Path(settings.upload_dir)
             if upload_dir.exists():
                 files = sorted(upload_dir.iterdir(), key=lambda f: f.stat().st_mtime)
-                removed = 0
+                cleaned = 0
+                failed = 0
                 for f in files[:10]:
                     try:
                         f.unlink()
-                        removed += 1
-                    except Exception:
-                        pass
-                _mark_healed(error_log, db, f"Cleaned up {removed} old uploads to free space")
+                        cleaned += 1
+                    except OSError as e:
+                        failed += 1
+                        log.warning(
+                            "cleanup_delete_failed",
+                            file=str(f), error=str(e),
+                        )
+                _mark_healed(
+                    error_log, db,
+                    f"Cleaned up {cleaned} old uploads to free space "
+                    f"({failed} failed)",
+                )
+                log.info(
+                    "cleanup_complete",
+                    cleaned=cleaned, failed=failed,
+                )
                 await notify_healed(error_log)
                 return True
         except Exception:
