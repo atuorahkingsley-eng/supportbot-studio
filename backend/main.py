@@ -73,8 +73,6 @@ def _log_daily_usage() -> None:
         insert_fn = pg_insert
     elif dialect == "sqlite":
         insert_fn = sqlite_insert
-    else:
-        raise RuntimeError(f"Unsupported database dialect: {dialect}")
 
     today = date.today()
 
