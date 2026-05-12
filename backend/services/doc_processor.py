@@ -73,7 +73,7 @@ async def _generate_qa_pairs(text: str) -> List[dict]:
     chunks = _chunk_text(text, max_chars=2000)
     all_pairs = []
 
-    client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+    client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key, timeout=30.0)
 
     for chunk in chunks[:5]:  # Limit to 5 chunks per upload
         prompt = (
@@ -86,7 +86,7 @@ async def _generate_qa_pairs(text: str) -> List[dict]:
         )
 
         try:
-            response = client.messages.create(
+            response = await client.messages.create(
                 model="claude-sonnet-4-20250514",
                 max_tokens=1024,
                 messages=[{"role": "user", "content": prompt}],
