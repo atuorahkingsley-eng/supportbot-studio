@@ -593,6 +593,7 @@ async def rate_conversation(
     data: RateRequest,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
+    tenant: Tenant = Depends(get_current_client),
 ):
     """Public endpoint — no auth required, but the (session_id, bot_id) pair
     is verified before any write. Rate-limited because the success path
@@ -604,7 +605,7 @@ async def rate_conversation(
         raise HTTPException(status_code=429, detail="Rate limit exceeded for this bot")
     convo = db.query(Conversation).filter(
         Conversation.session_id == data.session_id,
-        Conversation.bot_id == data.bot_id,
+        Conversation.bot_id == tenant.bot_id,
     ).first()
     if not convo:
         raise HTTPException(status_code=404, detail="Conversation not found")
@@ -614,29 +615,21 @@ async def rate_conversation(
     convo.ended_at = datetime.utcnow()
     db.commit()
 
-    # Fire conversation_ended webhooks. The rating is already persisted above,
-    # so any fan-out failure is non-fatal — _fire_conversation_ended_webhooks
-    # isolates per-webhook exceptions and writes them to ErrorLog. Awaited
-    # inline to match the pattern in escalate.py:140-147.
-    await _fire_conversation_ended_webhooks(db, data.bot_id, data.session_id, data.rating)
+    # Fire conversation_ended webhooks.
+    await _fire_conversation_ended_webhooks(db, tenant.bot_id, data.session_id, data.rating)
 
     link = db.query(VisitorConversation).filter(
         VisitorConversation.conversation_id == convo.id,
-        VisitorConversation.bot_id == data.bot_id,
+        VisitorConversation.bot_id == tenant.bot_id,
     ).first()
     if link:
-        # ── Atomic quota reservation for the summary task ────────────────────
-        # _summarize_and_update_visitor calls generate_visitor_summary which
-        # hits Claude. Pre-fix a tenant at their monthly cap could still rack
-        # up summary-call charges via this endpoint. Same UPDATE-WHERE pattern
-        # as public_chat — no slot, no summary, but the rating is still saved.
-        tenant = db.query(Tenant).filter(
-            Tenant.bot_id == data.bot_id,
+        tenant_obj = db.query(Tenant).filter(
+            Tenant.bot_id == tenant.bot_id,
             Tenant.is_active == True,
         ).first()
-        if tenant:
+        if tenant_obj:
             reserved = db.query(Tenant).filter(
-                Tenant.id == tenant.id,
+                Tenant.id == tenant_obj.id,
                 Tenant.messages_used_this_month < Tenant.monthly_message_limit,
             ).update(
                 {Tenant.messages_used_this_month: Tenant.messages_used_this_month + 1},
