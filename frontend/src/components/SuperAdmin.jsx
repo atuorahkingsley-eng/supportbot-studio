@@ -325,10 +325,10 @@ function SuperAdminDashboard({ onLogout }) {
   const [healthLoading, setHealthLoading] = useState(false)
 
   const load = () => {
-    fetch('/api/admin/overview', { credentials: 'include' }).then(r => r.json()).then(setOverview).catch(() => {})
-    fetch('/api/admin/tenants', { credentials: 'include' }).then(r => r.json()).then(setTenants).catch(() => {})
-    fetch('/api/admin/system', { credentials: 'include' }).then(r => r.json()).then(setSystem).catch(() => {})
-    fetch('/api/admin/billing', { credentials: 'include' }).then(r => r.json()).then(setBilling).catch(() => {})
+    fetch('/api/admin/overview', { credentials: 'include' }).then(r => r.ok ? r.json() : null).then(setOverview).catch(() => setOverview(null))
+    fetch('/api/admin/tenants', { credentials: 'include' }).then(r => r.ok ? r.json() : []).then(setTenants).catch(() => setTenants([]))
+    fetch('/api/admin/system', { credentials: 'include' }).then(r => r.ok ? r.json() : null).then(setSystem).catch(() => setSystem(null))
+    fetch('/api/admin/billing', { credentials: 'include' }).then(r => r.ok ? r.json() : null).then(setBilling).catch(() => setBilling(null))
   }
 
   const loadHealth = () => {
