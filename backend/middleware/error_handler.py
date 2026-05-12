@@ -16,6 +16,33 @@ from backend.database import SessionLocal, ErrorLog
 log = structlog.get_logger(__name__)
 
 
+def _error_response_for_path(path: str, message: str) -> dict:
+    if path.startswith("/api/chat"):
+        return {
+            "reply": message,
+            "was_auto_reply": True,
+            "error": True
+        }
+    elif path.startswith("/api/analytics"):
+        return {
+            "error": True,
+            "message": message,
+            "data": None
+        }
+    elif path.startswith("/api/leads"):
+        return {
+            "error": True,
+            "message": message,
+            "leads": [],
+            "total": 0
+        }
+    else:
+        return {
+            "error": True,
+            "message": message
+        }
+
+
 class ErrorHandlerMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         # Cache body bytes once so it can be read again in the except block
@@ -69,13 +96,11 @@ class ErrorHandlerMiddleware(BaseHTTPMiddleware):
                 healed = await attempt_heal(error_log, db)
 
                 if healed:
-                    return JSONResponse(
-                        status_code=200,
-                        content={
-                            "reply": "Sorry for the brief hiccup — I've fixed the issue. Could you try that again?",
-                            "was_auto_reply": True,
-                        },
+                    body = _error_response_for_path(
+                        str(request.url.path),
+                        "Sorry for the brief hiccup — I've fixed the issue. Could you try that again?",
                     )
+                    return JSONResponse(status_code=200, content=body)
                 else:
                     # Alert via Telegram
                     from backend.services.telegram_notify import send_telegram_alert
