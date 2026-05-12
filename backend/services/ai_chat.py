@@ -10,7 +10,11 @@ from backend.services.brand_voice_analyzer import render_voice_block
 # One client per process. Per-call construction with no timeout was the bug:
 # a hung Anthropic request would pin a worker indefinitely. timeout=30.0 caps
 # any single request — under load the pool can't be exhausted by one stuck call.
-_client = anthropic.Anthropic(api_key=settings.anthropic_api_key, timeout=30.0)
+#
+# AsyncAnthropic (not Anthropic): every consumer of this module is an async
+# function — using the sync client would block the entire event loop for the
+# duration of each call, serialising chat requests across all tenants.
+_client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key, timeout=30.0)
 
 
 # ── Prompt-injection defense ─────────────────────────────────────────────────
@@ -175,7 +179,7 @@ async def get_ai_reply(
     # the model can drop without losing identity.
     trimmed_messages = messages[-20:]
 
-    response = _client.messages.create(
+    response = await _client.messages.create(
         model="claude-sonnet-4-20250514",
         max_tokens=1024,
         system=system_prompt,
@@ -204,7 +208,7 @@ async def generate_visitor_summary(messages: list) -> dict:
     )
 
     try:
-        response = _client.messages.create(
+        response = await _client.messages.create(
             model="claude-sonnet-4-20250514",
             max_tokens=256,
             messages=[{"role": "user", "content": prompt}],
