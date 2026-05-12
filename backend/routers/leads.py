@@ -369,10 +369,7 @@ def export_leads(
         buf = io.StringIO()
         w = csv.writer(buf)
         w.writerow(headers)
-        yield buf.getvalue()
         for lead in leads:
-            buf = io.StringIO()
-            w = csv.writer(buf)
             w.writerow([
                 lead.id,
                 lead.created_at.isoformat() if lead.created_at else "",
@@ -386,7 +383,7 @@ def export_leads(
                 _safe_cell(lead.visitor_id),
                 lead.conversation_id if lead.conversation_id is not None else "",
             ])
-            yield buf.getvalue()
+        yield buf.getvalue()
 
     return StreamingResponse(
         _lead_csv_generator(rows),
