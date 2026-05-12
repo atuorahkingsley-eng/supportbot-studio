@@ -15,7 +15,13 @@ export default function ReportSettings() {
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
-    fetch('/api/reports', { credentials: 'include' }).then(r => r.json()).then(setSchedule).catch(() => {})
+    fetch('/api/reports', { credentials: 'include' }).then(async r => {
+      if (!r.ok) {
+        console.error('Failed to load report settings')
+        return
+      }
+      setSchedule(await r.json())
+    }).catch(() => {})
   }, [])
 
   const save = async () => {
