@@ -393,6 +393,10 @@ class PendingEscalation(Base):
     retry_after = Column(DateTime, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
+    __table_args__ = (
+        UniqueConstraint("bot_id", "session_id", name="uq_pending_esc_bot_session"),
+    )
+
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
