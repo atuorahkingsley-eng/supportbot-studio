@@ -28,7 +28,10 @@ export default function AdminPanel({ config, setConfig }) {
   useEffect(() => { setForm(config) }, [config])
 
   useEffect(() => {
-    fetch('/api/knowledge', { credentials: 'include' }).then(r => r.json()).then(setFaqs).catch(() => {})
+    fetch('/api/knowledge', { credentials: 'include' })
+      .then(r => r.json())
+      .then(setFaqs)
+      .catch(() => addToast('Failed to load knowledge base', 'error'))
   }, [])
 
   // Fetch existing brand voice on mount — 404 is the empty state, not an error.
@@ -200,7 +203,10 @@ export default function AdminPanel({ config, setConfig }) {
       const r = await fetch('/api/knowledge/upload', { method: 'POST', credentials: 'include', body: fd })
       const data = await r.json()
       setUploadResult(data)
-      fetch('/api/knowledge', { credentials: 'include' }).then(r => r.json()).then(setFaqs)
+      fetch('/api/knowledge', { credentials: 'include' })
+        .then(r => r.json())
+        .then(setFaqs)
+        .catch(() => {})
       addToast(`Extracted ${data.added} Q&A pairs from ${file.name}`, 'success')
     } catch {
       addToast('Upload failed', 'error')
