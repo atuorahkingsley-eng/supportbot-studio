@@ -338,13 +338,6 @@ async def _do_escalate(
             ).on_conflict_do_nothing(
                 index_elements=["bot_id", "session_id"]
             )
-        else:
-            pending = PendingEscalation(
-                bot_id=bot_id, session_id=session_id,
-                customer_email=contact["email"],
-                retry_after=datetime.utcnow() + timedelta(minutes=5),
-            )
-            db.add(pending)
         try:
             db.execute(stmt)
             db.commit()
