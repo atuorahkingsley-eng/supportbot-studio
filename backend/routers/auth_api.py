@@ -23,6 +23,13 @@ from backend.config import settings
 
 log = structlog.get_logger(__name__)
 
+# Dummy bcrypt hash used in login endpoints to prevent timing-based email
+# enumeration (CWE-208). We always call verify_password even when the user
+# doesn't exist — the timing difference between "user not found (sub-ms)"
+# and "wrong password (~100ms bcrypt)" would otherwise reveal whether an
+# email/username is registered.
+_DUMMY_HASH = hash_password("dummy-password-never-matches")
+
 # Same algorithm constant the auth service uses for encode/decode. Kept
 # local rather than importing the private constant from services/auth so a
 # rename there doesn't silently break this file.
@@ -91,7 +98,8 @@ class ClientLoginRequest(BaseModel):
 @limiter.limit("5/15 minutes")
 def super_login(request: Request, data: SuperLoginRequest, response: Response, db: Session = Depends(get_db)):
     admin = db.query(SuperAdmin).filter(SuperAdmin.username == data.username).first()
-    if not admin or not verify_password(data.password, admin.password_hash):
+    candidate = admin.password_hash if admin else _DUMMY_HASH
+    if not verify_password(data.password, candidate) or not admin:
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
     token = create_token({"role": "super_admin", "username": admin.username})
@@ -113,7 +121,9 @@ def super_login(request: Request, data: SuperLoginRequest, response: Response, d
 @limiter.limit("5/15 minutes")
 def client_login(request: Request, data: ClientLoginRequest, response: Response, db: Session = Depends(get_db)):
     tenant = db.query(Tenant).filter(Tenant.owner_email == data.email).first()
-    if not tenant or not verify_password(data.password, tenant.password_hash):
+    candidate = tenant.password_hash if tenant else _DUMMY_HASH
+    if not verify_password(data.password, candidate) or not tenant:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
         raise HTTPException(status_code=401, detail="Invalid credentials")
     if not tenant.is_active:
         raise HTTPException(status_code=403, detail="Account is inactive")
