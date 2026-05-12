@@ -6,12 +6,15 @@ import shutil
 from datetime import datetime, timedelta
 
 import httpx
+import structlog
 from fastapi import APIRouter, Depends
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from backend.config import settings
 from backend.database import get_db, ErrorLog, Tenant, FAQEntry
+
+log = structlog.get_logger(__name__)
 
 router = APIRouter(tags=["health"])
 
@@ -100,6 +103,9 @@ async def health_check(db: Session = Depends(get_db)):
         checks["disk"] = {"status": "error", "message": str(e)[:100]}
 
     # ── 5. Error rate (last hour) ──────────────────────────────────────────────
+    error_rate_status = "ok"
+    recent_errors = 0
+    failed_errors = 0
     try:
         one_hour_ago = datetime.utcnow() - timedelta(hours=1)
         recent_errors = db.query(ErrorLog).filter(ErrorLog.created_at > one_hour_ago).count()
@@ -107,13 +113,20 @@ async def health_check(db: Session = Depends(get_db)):
             ErrorLog.created_at > one_hour_ago,
             ErrorLog.status == "failed",
         ).count()
-        checks["error_rate"] = {
-            "status": "ok" if recent_errors < 5 else "warning" if recent_errors < 20 else "error",
-            "errors_last_hour": recent_errors,
-            "failed_last_hour": failed_errors,
-        }
-    except Exception:
-        checks["error_rate"] = {"status": "ok", "errors_last_hour": 0, "failed_last_hour": 0}
+        if recent_errors >= 20:
+            error_rate_status = "error"
+        elif recent_errors >= 5:
+            error_rate_status = "warning"
+        else:
+            error_rate_status = "ok"
+    except Exception as e:
+        log.warning("health.error_rate_check_failed", error=str(e)[:200])
+        error_rate_status = "unknown"
+    checks["error_rate"] = {
+        "status": error_rate_status,
+        "errors_last_hour": recent_errors,
+        "failed_last_hour": failed_errors,
+    }
 
     # ── 6. Active tenants ──────────────────────────────────────────────────────
     try:
