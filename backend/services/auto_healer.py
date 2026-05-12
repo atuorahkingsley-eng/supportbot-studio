@@ -17,7 +17,7 @@ from backend.database import ErrorLog
 # ── Anthropic client (module-level, reused) ───────────────────────────────────
 # One client per process with a 30s ceiling on any single call. Auto-heal runs
 # inside the request hot path — a hung Claude diagnosis would pin a worker.
-_client = anthropic.Anthropic(api_key=settings.anthropic_api_key, timeout=30.0)
+_client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key, timeout=30.0)
 
 
 # ── Healing strategy map ───────────────────────────────────────────────────────
@@ -204,7 +204,7 @@ Analyze this error and respond with ONLY a JSON object (no markdown, no extra te
 
 Only set can_auto_fix to true if the fix is safe to apply automatically (like retrying, clearing a cache, fixing missing data). Set to false for anything that requires code changes or manual investigation."""
 
-        response = _client.messages.create(
+        response = await _client.messages.create(
             model="claude-3-5-haiku-20241022",
             max_tokens=400,
             messages=[{"role": "user", "content": prompt}],
