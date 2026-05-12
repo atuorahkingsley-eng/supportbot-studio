@@ -63,9 +63,11 @@ def _log_daily_usage() -> None:
     """
     from datetime import date
     from backend.database import Tenant, Message, Lead, UsageLog, get_dialect
+    from sqlalchemy import func
     from sqlalchemy.dialects.postgresql import insert as pg_insert
     from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
+    db = SessionLocal()
     dialect = get_dialect(db)
     if dialect == "postgresql":
         insert_fn = pg_insert
