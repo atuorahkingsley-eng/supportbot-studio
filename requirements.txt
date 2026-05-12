@@ -24,3 +24,10 @@ structlog>=24.1.0
 # Render's build step doesn't need libpq dev headers. SQLite-only deploys
 # don't import this; it's a no-op cost.
 psycopg2-binary>=2.9.0
+# Test suite — pinned to majors that have shipped against our async/Pydantic v2 stack.
+# pytest-asyncio drives the @pytest.mark.asyncio + asyncio_mode=auto config.
+# pytest-mock supplies the `mocker` fixture used to patch _get_ai_reply_with_fallback
+# and httpx.AsyncClient.post without bleeding state between tests.
+pytest>=8.0
+pytest-asyncio>=0.23
+pytest-mock>=3.12

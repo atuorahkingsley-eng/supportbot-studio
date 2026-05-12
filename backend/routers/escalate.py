@@ -2,11 +2,13 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
-from typing import Optional
+from typing import Any, Optional
+
+import structlog
 
 from backend.database import (
     get_db, Conversation, Message, WebhookConfig, BotConfig, Tenant,
-    PendingEscalation, ErrorLog,
+    PendingEscalation, ErrorLog, Lead,
 )
 from backend.services.telegram_notify import send_telegram_message
 from backend.services.email_notify import send_emailjs
@@ -15,18 +17,40 @@ from backend.services.auth import get_current_client
 from backend.services.rate_limit import limiter, check_bot_id_rate_limit
 from slowapi.util import get_remote_address
 
+log = structlog.get_logger(__name__)
+
 router = APIRouter(prefix="/api/escalate", tags=["escalate"])
 
 
+# Valid values for the structured payload's "reason" field. Kept as a tuple so
+# typo'd reasons surface at the call site instead of silently shipping garbage
+# to webhook receivers.
+_VALID_REASONS = ("customer_requested", "ai_escalated", "message_limit")
+
+
 class EscalateRequest(BaseModel):
+    """Authenticated escalation body — contact fields all optional.
+
+    ``customer_email`` is kept for backward compat with existing clients;
+    new callers should populate ``email`` (with optional ``name`` / ``phone``).
+    When both are present, ``email`` wins.
+    """
     session_id: str
     customer_email: Optional[str] = None
+    name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    reason: Optional[str] = "customer_requested"
 
 
 class PublicEscalateRequest(BaseModel):
     bot_id: str
     session_id: str
     customer_email: Optional[str] = None
+    name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    reason: Optional[str] = "customer_requested"
 
 
 def _log_notification_error(db: Session, bot_id: str, channel: str, error: Exception):
@@ -45,11 +69,102 @@ def _log_notification_error(db: Session, bot_id: str, channel: str, error: Excep
         pass
 
 
-async def _do_escalate(session_id: str, customer_email: Optional[str], bot_id: str, db: Session):
+def _resolve_contact(
+    *,
+    db: Session,
+    bot_id: str,
+    convo: Conversation,
+    name: Optional[str],
+    email: Optional[str],
+    phone: Optional[str],
+) -> dict[str, Optional[str]]:
+    """Merge contact details supplied on this request with the visitor's history.
+
+    Priority for each field: explicit request value → most recent prior Lead
+    captured in this visitor's session (lead-capture form filled earlier in
+    the same chat) → ``Conversation.customer_email`` (legacy column, email
+    only). Returns the dict ready to drop into the webhook ``contact`` block.
+
+    Args:
+        db: Active SQLAlchemy session.
+        bot_id: Tenant identifier; used to scope the Lead lookup.
+        convo: Current conversation — provides visitor_id and legacy
+            customer_email fallback.
+        name: Contact name supplied on the escalate request, if any.
+        email: Contact email supplied on the escalate request, if any.
+        phone: Contact phone supplied on the escalate request, if any.
+
+    Returns:
+        Dict with exactly three keys (name, email, phone), each mapped to a
+        str or None. Always returns all three keys so receivers can rely on
+        shape stability.
     """
-    Shared escalation logic.
-    Phase 7: Each notification channel wrapped individually — partial success is OK.
-    If ALL channels fail, store a PendingEscalation for scheduler retry.
+    prior: Optional[Lead] = None
+    if convo.visitor_id:
+        prior = (
+            db.query(Lead)
+            .filter(Lead.bot_id == bot_id, Lead.visitor_id == convo.visitor_id)
+            .order_by(Lead.created_at.desc())
+            .first()
+        )
+    return {
+        "name": name or (prior.name if prior else None),
+        "email": email or (prior.email if prior else None) or convo.customer_email,
+        "phone": phone or (prior.phone if prior else None),
+    }
+
+
+async def _do_escalate(
+    session_id: str,
+    customer_email: Optional[str],
+    bot_id: str,
+    db: Session,
+    *,
+    name: Optional[str] = None,
+    email: Optional[str] = None,
+    phone: Optional[str] = None,
+    reason: Optional[str] = "customer_requested",
+) -> dict[str, Any]:
+    """Shared escalation logic — fan out to telegram, email, and webhooks.
+
+    Each notification channel is wrapped individually so partial success is
+    OK. If ALL channels fail, store a ``PendingEscalation`` for the
+    scheduler to retry.
+
+    New (additive) behaviours vs. the original implementation:
+
+    1. Accepts ``name`` / ``email`` / ``phone`` and threads them through the
+       webhook payload's ``contact`` block. Missing fields are resolved from
+       prior Lead rows in the same visitor's history, so a visitor who filled
+       the lead-capture form earlier still gets identified on escalation.
+    2. Persists a Lead row of ``type="escalation"`` so the unified Leads tab
+       can surface both buying-intent captures and human-support requests in
+       one table.
+    3. The custom_https webhook now carries a structured ``data`` envelope
+       (``visitor_id``, ``bot_name``, ``reason``, ``message_count``, ``contact``)
+       in addition to the legacy ``text`` summary — see
+       ``send_custom_https_webhook`` for the full shape.
+    4. Telegram / email summaries include a Name / Email / Phone block so
+       human responders see the contact details inline.
+
+    Args:
+        session_id: Conversation session UUID — pinned with bot_id.
+        customer_email: Legacy email-only contact field; ``email`` wins
+            when both are supplied.
+        bot_id: Tenant identifier; used for isolation and to scope all queries.
+        db: Active SQLAlchemy session.
+        name: Visitor-supplied name (from ContactForm).
+        email: Visitor-supplied email; takes precedence over customer_email.
+        phone: Visitor-supplied phone.
+        reason: One of "customer_requested", "ai_escalated", "message_limit".
+            Invalid values are normalised to "customer_requested" rather
+            than rejected — we'd rather ship the escalation than 400 on
+            a stale client.
+
+    Returns:
+        ``{"ok": True, "results": {<channel>: bool, ...}}`` when at least one
+        channel delivered. Raises HTTPException(500) when every channel
+        failed; a PendingEscalation row is queued for retry first.
     """
     # Tenant isolation: a session_id alone is NOT a sufficient lookup key —
     # an attacker could pass another tenant's UUID and route their transcript
@@ -68,16 +183,35 @@ async def _do_escalate(session_id: str, customer_email: Optional[str], bot_id: s
     bot_config = db.query(BotConfig).filter(BotConfig.bot_id == bot_id).first()
     business_name = bot_config.business_name if bot_config else "SupportBot"
 
+    # ── Resolve final email + contact details ─────────────────────────────────
+    # email arg wins, falling back to legacy customer_email; ``customer_email``
+    # in the request body remains supported but is treated as email-only input.
+    effective_email = email or customer_email
+    contact = _resolve_contact(
+        db=db, bot_id=bot_id, convo=convo,
+        name=name, email=effective_email, phone=phone,
+    )
+    normalised_reason = reason if reason in _VALID_REASONS else "customer_requested"
+
     transcript_lines = []
     for msg in messages:
         role = "Customer" if msg.role == "user" else "Bot"
         transcript_lines.append(f"{role}: {msg.content}")
     transcript = "\n".join(transcript_lines)
 
-    email = customer_email or convo.customer_email or "Unknown"
+    # First user message — what kicked off the conversation. Used as the
+    # ``message`` field in the webhook envelope so receivers see context.
+    first_user_msg = next((m.content for m in messages if m.role == "user"), None)
+
+    contact_block = (
+        f"Name: {contact['name'] or '—'} | "
+        f"Email: {contact['email'] or '—'} | "
+        f"Phone: {contact['phone'] or '—'}"
+    )
     summary = (
         f"SupportBot Escalation — {business_name}\n"
-        f"Customer: {email}\n"
+        f"{contact_block}\n"
+        f"Reason: {normalised_reason}\n"
         f"Messages: {len(messages)}\n"
         f"Time: {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}\n\n"
         f"Transcript:\n{transcript}"
@@ -123,18 +257,42 @@ async def _do_escalate(session_id: str, customer_email: Optional[str], bot_id: s
             _log_notification_error(db, bot_id, "email", e)
 
     # ── Webhooks (try each independently) ─────────────────────────────────────
+    # custom_https receivers get the structured envelope (bot_id at the top
+    # level, contact/reason/message_count nested under ``data``). Slack and
+    # Discord receivers still get only the human-readable summary — their
+    # wire formats are fixed by those platforms, so the contact details get
+    # inlined into the summary text instead.
     webhooks = db.query(WebhookConfig).filter(
         WebhookConfig.bot_id == bot_id,
         WebhookConfig.enabled == True,
         WebhookConfig.notify_on.in_(["escalation", "all"]),
     ).all()
 
+    webhook_extra: dict[str, Any] = {
+        "visitor_id": convo.visitor_id,
+        "bot_name": business_name,
+        "reason": normalised_reason,
+        "message_count": len(messages),
+        "contact": contact,
+        "message": first_user_msg,
+    }
+
     for wh in webhooks:
         try:
             if wh.platform == "slack":
-                text = f"SupportBot Escalation\nCustomer: {email}\nMessages: {len(messages)}\n\n{transcript}"
+                text = (
+                    f"SupportBot Escalation\n"
+                    f"{contact_block}\n"
+                    f"Reason: {normalised_reason}\n"
+                    f"Messages: {len(messages)}\n\n{transcript}"
+                )
             elif wh.platform == "discord":
-                text = f"**SupportBot Escalation**\nCustomer: {email}\nMessages: {len(messages)}\n\n{transcript}"
+                text = (
+                    f"**SupportBot Escalation**\n"
+                    f"{contact_block}\n"
+                    f"Reason: {normalised_reason}\n"
+                    f"Messages: {len(messages)}\n\n{transcript}"
+                )
             else:
                 text = summary
             ok = await dispatch_webhook(
@@ -143,7 +301,9 @@ async def _do_escalate(session_id: str, customer_email: Optional[str], bot_id: s
                 text,
                 secret=wh.secret,
                 events=wh.events,
-                event="escalation",
+                event="escalation_triggered",
+                bot_id=bot_id,
+                extra=webhook_extra,
             )
             results[f"webhook_{wh.platform}_{wh.id}"] = ok
         except Exception as e:
@@ -176,9 +336,39 @@ async def _do_escalate(session_id: str, customer_email: Optional[str], bot_id: s
         )
 
     convo.escalated = True
-    if customer_email:
-        convo.customer_email = customer_email
+    # Store whatever email we resolved (request → prior Lead → existing column).
+    # Keeping the column populated keeps the existing Conversation export +
+    # Visitor history features lit up for escalated chats.
+    if contact["email"]:
+        convo.customer_email = contact["email"]
     db.commit()
+
+    # ── Persist a Lead row so the unified Leads tab surfaces this escalation ──
+    # Best-effort: a Lead-write failure must NOT mask a successful escalation
+    # (the notifications already fired). Log and move on.
+    try:
+        escalation_lead = Lead(
+            bot_id=bot_id,
+            visitor_id=convo.visitor_id,
+            name=contact["name"],
+            email=contact["email"],
+            phone=contact["phone"],
+            interest=first_user_msg,
+            source="escalation",
+            buying_signal_score=0,
+            conversation_id=convo.id,
+            type="escalation",
+            status="new",
+        )
+        db.add(escalation_lead)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        log.warning(
+            "escalation.lead_persist_failed",
+            bot_id=bot_id, session_id=session_id, error=str(e),
+        )
+        _log_notification_error(db, bot_id, "lead_persist", e)
 
     return {"ok": True, "results": results}
 
@@ -208,7 +398,16 @@ async def public_escalate(
     ).first()
     if not tenant:
         raise HTTPException(status_code=404, detail="Bot not found")
-    return await _do_escalate(data.session_id, data.customer_email, data.bot_id, db)
+    return await _do_escalate(
+        data.session_id,
+        data.customer_email,
+        data.bot_id,
+        db,
+        name=data.name,
+        email=data.email,
+        phone=data.phone,
+        reason=data.reason,
+    )
 
 
 # ── Authenticated endpoint (admin demo) ───────────────────────────────────────
@@ -219,4 +418,13 @@ async def escalate(
     db: Session = Depends(get_db),
     tenant: Tenant = Depends(get_current_client),
 ):
-    return await _do_escalate(data.session_id, data.customer_email, tenant.bot_id, db)
+    return await _do_escalate(
+        data.session_id,
+        data.customer_email,
+        tenant.bot_id,
+        db,
+        name=data.name,
+        email=data.email,
+        phone=data.phone,
+        reason=data.reason,
+    )

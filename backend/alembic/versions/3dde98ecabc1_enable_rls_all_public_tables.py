@@ -48,11 +48,21 @@ _TABLES = [
 ]
 
 
+def _is_postgres() -> bool:
+    """Skip on SQLite local-dev — RLS is Postgres-only DDL."""
+    bind = op.get_bind()
+    return bind.dialect.name == "postgresql"
+
+
 def upgrade() -> None:
+    if not _is_postgres():
+        return
     for table in _TABLES:
         op.execute(f"ALTER TABLE public.{table} ENABLE ROW LEVEL SECURITY;")
 
 
 def downgrade() -> None:
+    if not _is_postgres():
+        return
     for table in _TABLES:
         op.execute(f"ALTER TABLE public.{table} DISABLE ROW LEVEL SECURITY;")

@@ -6,6 +6,7 @@ import AnalyticsDashboard from './components/AnalyticsDashboard.jsx'
 import WebhookSettings from './components/WebhookSettings.jsx'
 import ReportSettings from './components/ReportSettings.jsx'
 import SalesPanel from './components/SalesPanel.jsx'
+import LeadsTab from './components/LeadsTab.jsx'
 import LoginPage from './components/LoginPage.jsx'
 import SuperAdmin from './components/SuperAdmin.jsx'
 import EmbedChat from './components/EmbedChat.jsx'
@@ -64,6 +65,7 @@ const TABS = [
   { id: 'configure', label: 'Configure' },
   { id: 'chat', label: 'Chat Demo' },
   { id: 'analytics', label: 'Analytics' },
+  { id: 'leads', label: '🎯 Leads' },
   { id: 'sales', label: '💰 Sales' },
   { id: 'integrations', label: 'Integrations' },
 ]
@@ -133,6 +135,7 @@ function ClientAdminLayout() {
         {activeTab === 'configure' && <AdminPanel config={config} setConfig={setConfig} />}
         {activeTab === 'chat' && <ChatWidget config={config} botId={user.bot_id} />}
         {activeTab === 'analytics' && <AnalyticsDashboard />}
+        {activeTab === 'leads' && <LeadsTab />}
         {activeTab === 'sales' && <SalesPanel />}
         {activeTab === 'integrations' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>

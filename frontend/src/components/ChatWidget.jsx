@@ -90,47 +90,135 @@ function DemoCard({ action, accent }) {
   )
 }
 
-function LeadCaptureCard({ onCapture, accent }) {
+/**
+ * Reusable contact-capture form rendered inline in the chat transcript.
+ *
+ * Used for BOTH flows the widget needs:
+ *   - Lead capture (buying intent detected by Claude)
+ *   - Escalation request (visitor asked for a human)
+ *
+ * Copy + downstream handler differ between flows — everything UI-shaped
+ * stays identical, so the same component drives both. The parent owns
+ * what "submit" / "skip" actually do.
+ *
+ * Props
+ *   title       string  — bold header line (e.g. "Let me connect you...")
+ *   subtitle    string  — supporting copy (e.g. "Drop your details...")
+ *   submitLabel string  — submit-button text (default "Submit")
+ *   onSubmit    (fields) => void  — called with { name, email, phone }
+ *   onSkip      () => void        — called when "Skip" is pressed
+ *   brandColor  string  — accent for the submit button (tenant brand_color)
+ */
+function ContactForm({ title, subtitle, submitLabel = 'Submit', onSubmit, onSkip, brandColor }) {
+  const [name, setName] = useState('')
   const [email, setEmail] = useState('')
-  const [done, setDone] = useState(false)
-  const handleSubmit = () => {
-    if (!email.trim()) return
-    onCapture(email)
-    setDone(true)
+  const [phone, setPhone] = useState('')
+
+  const submit = () => {
+    onSubmit({
+      name: name.trim() || null,
+      email: email.trim() || null,
+      phone: phone.trim() || null,
+    })
   }
-  if (done) return (
-    <div style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 10, padding: '10px 14px', margin: '4px 0', fontSize: 13, color: '#15803D' }}>
-      ✅ Got it! We'll send you more info.
-    </div>
-  )
+
   return (
     <div style={{
-      background: 'linear-gradient(135deg, #F5F3FF, #EDE9FE)',
-      border: '1px solid #C4B5FD', borderRadius: 10, padding: '12px 14px', margin: '4px 0',
+      background: '#fff',
+      border: '1px solid var(--border)',
+      borderRadius: 10,
+      padding: '14px 16px',
+      margin: '4px 0',
+      boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
     }}>
-      <div style={{ fontSize: 13, fontWeight: 600, color: '#4C1D95', marginBottom: 8 }}>
-        📧 Want a detailed comparison? Enter your email:
+      <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 4 }}>
+        {title}
       </div>
-      <div style={{ display: 'flex', gap: 8 }}>
+      {subtitle && (
+        <div style={{ fontSize: 12.5, color: 'var(--text-secondary)', marginBottom: 10 }}>
+          {subtitle}
+        </div>
+      )}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <input
+          className="input"
+          type="text"
+          value={name}
+          onChange={e => setName(e.target.value)}
+          placeholder="Name"
+          style={{ fontSize: 13 }}
+        />
         <input
           className="input"
           type="email"
           value={email}
           onChange={e => setEmail(e.target.value)}
-          placeholder="you@example.com"
-          style={{ flex: 1, fontSize: 13 }}
-          onKeyDown={e => e.key === 'Enter' && handleSubmit()}
+          placeholder="Email"
+          style={{ fontSize: 13 }}
         />
-        <button
-          onClick={handleSubmit}
-          style={{
-            background: accent, color: '#fff', border: 'none', borderRadius: 6,
-            padding: '6px 12px', fontSize: 13, cursor: 'pointer', fontWeight: 500,
-          }}
-        >Send</button>
+        <input
+          className="input"
+          type="tel"
+          value={phone}
+          onChange={e => setPhone(e.target.value)}
+          placeholder="Phone (optional)"
+          style={{ fontSize: 13 }}
+        />
+        <div style={{ display: 'flex', gap: 8, marginTop: 2 }}>
+          <button
+            onClick={submit}
+            style={{
+              flex: 1,
+              background: brandColor,
+              color: '#fff',
+              border: 'none',
+              borderRadius: 6,
+              padding: '8px 12px',
+              fontSize: 13,
+              cursor: 'pointer',
+              fontWeight: 500,
+            }}
+          >{submitLabel}</button>
+          <button
+            onClick={onSkip}
+            style={{
+              background: 'transparent',
+              color: 'var(--text-secondary)',
+              border: '1px solid var(--border)',
+              borderRadius: 6,
+              padding: '8px 12px',
+              fontSize: 13,
+              cursor: 'pointer',
+            }}
+          >Skip</button>
+        </div>
       </div>
     </div>
   )
+}
+
+// Case-insensitive substring triggers that route the next bot turn to the
+// escalation contact form rather than Claude. Kept verbose deliberately —
+// some phrases overlap ("speak to a human" vs "speak to someone") but each
+// covers different real-world wordings we've seen in transcripts.
+const ESCALATION_PHRASES = [
+  'speak to a human',
+  'talk to a person',
+  'real person',
+  'human agent',
+  'customer service',
+  'speak to someone',
+  'escalate',
+  'transfer me',
+  'live agent',
+  'support team',
+  'talk to support',
+]
+
+function detectEscalationIntent(text) {
+  if (!text) return false
+  const lower = text.toLowerCase()
+  return ESCALATION_PHRASES.some(p => lower.includes(p))
 }
 
 // ── Language display names ────────────────────────────────────────────────────
@@ -149,9 +237,16 @@ export default function ChatWidget({ config, botId }) {
   const [input, setInput] = useState('')
   const [sessionId, setSessionId] = useState(null)
   const [loading, setLoading] = useState(false)
-  const [showEscalate, setShowEscalate] = useState(false)
-  const [escalateEmail, setEscalateEmail] = useState('')
+  // Escalation flow: when true, the next assistant turn surfaces the contact
+  // form (Flow B copy) instead of routing through Claude. The "shown" flag
+  // is a once-per-session guard — we never re-prompt for contact details on
+  // the same session even if the visitor types another trigger phrase.
+  const [showEscalateForm, setShowEscalateForm] = useState(false)
+  const [escalateFormShown, setEscalateFormShown] = useState(false)
   const [escalated, setEscalated] = useState(false)
+  // Lead-capture flow (buying-intent driven). Mirrors the escalation guards
+  // so the form only ever appears once per session for each flow.
+  const [leadFormShown, setLeadFormShown] = useState(false)
   const [showRating, setShowRating] = useState(false)
   const [rated, setRated] = useState(false)
 
@@ -306,6 +401,23 @@ export default function ChatWidget({ config, botId }) {
     }])
     setSalesAction(null)
     setShowProactive(false)
+
+    // Short-circuit: customer asked for a human. We bypass Claude entirely so
+    // we don't burn a model call on a deterministic intent, and so the form
+    // appears immediately rather than after a streaming response.
+    // Guarded with escalateFormShown so a second trigger phrase doesn't
+    // re-prompt mid-session.
+    if (!escalated && !escalateFormShown && detectEscalationIntent(userMsg)) {
+      setEscalateFormShown(true)
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: 'Of course! Let me get someone for you right away.',
+        auto: false,
+      }])
+      setShowEscalateForm(true)
+      return
+    }
+
     setLoading(true)
 
     try {
@@ -335,7 +447,13 @@ export default function ChatWidget({ config, botId }) {
         role: 'assistant', content: data.reply, auto: data.was_auto_reply,
       }])
 
-      if (data.needs_escalation) setTimeout(() => setShowEscalate(true), 800)
+      // AI-driven escalation signal — route through the same form flow as the
+      // phrase-detection path so we always collect contact details, never the
+      // legacy email-only banner.
+      if (data.needs_escalation && !escalated && !escalateFormShown) {
+        setEscalateFormShown(true)
+        setTimeout(() => setShowEscalateForm(true), 800)
+      }
     } catch {
       setMessages(prev => [...prev, {
         role: 'assistant', content: 'Sorry, something went wrong. Please try again.', auto: false,
@@ -348,26 +466,61 @@ export default function ChatWidget({ config, botId }) {
   const sendMessage = () => sendMessageWithText(input)
 
   // ── Escalation ────────────────────────────────────────────────────────────
-  const handleEscalate = async () => {
+  // Both branches mark the escalation done client-side first, then fire the
+  // POST. We don't gate the confirmation message on the request resolving —
+  // the visitor shouldn't see "your request was received" only after the
+  // round-trip; backend retry handles delivery failures via PendingEscalation.
+  const handleEscalateSubmit = async (fields) => {
+    setShowEscalateForm(false)
+    setEscalated(true)
+    setMessages(prev => [...prev, {
+      role: 'assistant',
+      content: 'Thanks! A team member will be in touch shortly.',
+      auto: false,
+    }])
+    addToast('Escalation sent — a human will reach out soon!', 'success')
     if (!sessionId) return
     try {
       await fetch('/api/escalate', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ session_id: sessionId, customer_email: escalateEmail }),
+        body: JSON.stringify({
+          session_id: sessionId,
+          // Legacy field — backend still reads customer_email when explicit
+          // ``email`` isn't supplied. Kept for older receivers / dashboards.
+          customer_email: fields.email,
+          name: fields.name,
+          email: fields.email,
+          phone: fields.phone,
+          reason: 'customer_requested',
+        }),
       })
-      setEscalated(true)
-      setShowEscalate(false)
-      addToast('Escalation sent — a human will reach out soon!', 'success')
-      setMessages(prev => [...prev, {
-        role: 'assistant',
-        content: `I've escalated your request to our team. ${escalateEmail ? `We'll reach you at ${escalateEmail}.` : 'Someone will be in touch soon.'}`,
-        auto: false,
-      }])
     } catch {
       addToast('Failed to escalate', 'error')
     }
+  }
+
+  const handleEscalateSkip = () => {
+    setShowEscalateForm(false)
+    setEscalated(true)
+    setMessages(prev => [...prev, {
+      role: 'assistant',
+      content: 'No problem — feel free to keep chatting and a team member will join when available.',
+      auto: false,
+    }])
+    if (!sessionId) return
+    // Fire the escalation anyway so the team is aware; contact fields blank
+    // means the agent will need to follow up inside the chat.
+    fetch('/api/escalate', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        session_id: sessionId,
+        reason: 'customer_requested',
+      }),
+    }).catch(() => {})
   }
 
   // ── Rating ────────────────────────────────────────────────────────────────
@@ -387,19 +540,59 @@ export default function ChatWidget({ config, botId }) {
   }
 
   // ── Lead capture ──────────────────────────────────────────────────────────
-  const captureLeadFromAction = async (email) => {
+  // Buying-intent flow. ``fields`` is the full {name, email, phone} dict from
+  // ContactForm; any unfilled value comes through as null. We still create a
+  // Lead row even if everything is null on Skip — see leadCaptureSkip — so
+  // the buying-signal score stays visible to the team.
+  const captureLeadFromAction = async (fields) => {
+    setSalesAction(null)
+    setMessages(prev => [...prev, {
+      role: 'assistant',
+      content: "Thanks! We'll get back to you shortly with more info.",
+      auto: false,
+    }])
+    addToast('Got it — info is on the way!', 'success')
     try {
       await fetch('/api/sales/leads/capture', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          email, source: 'chat_capture', buying_signal_score: 4,
-          visitor_id: visitorId, conversation_id: null,
+          name: fields.name,
+          email: fields.email,
+          phone: fields.phone,
+          source: 'chat_capture',
+          buying_signal_score: 4,
+          visitor_id: visitorId,
+          conversation_id: null,
           interest: messages.filter(m => m.role === 'user').slice(-1)[0]?.content || '',
         }),
       })
     } catch {}
+  }
+
+  // Skip on the lead-capture form: same backend write (null contact fields)
+  // so the buying-intent signal stays on the dashboard, but the visitor sees
+  // a softer confirmation than the "info on the way" one.
+  const skipLeadCapture = () => {
+    setSalesAction(null)
+    setMessages(prev => [...prev, {
+      role: 'assistant',
+      content: 'No problem! Let me know if you have any other questions.',
+      auto: false,
+    }])
+    fetch('/api/sales/leads/capture', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        source: 'chat_capture',
+        buying_signal_score: 4,
+        visitor_id: visitorId,
+        conversation_id: null,
+        interest: messages.filter(m => m.role === 'user').slice(-1)[0]?.content || '',
+      }),
+    }).catch(() => {})
   }
 
   const handleExitCapture = async () => {
@@ -411,11 +604,16 @@ export default function ChatWidget({ config, botId }) {
   }
 
   // ── Reset ─────────────────────────────────────────────────────────────────
+  // Clears EVERY per-session flag — the once-per-session guards on the lead
+  // and escalation forms have to reset too, otherwise a manual reset leaves
+  // the visitor unable to re-trigger either flow.
   const resetChat = () => {
     setMessages([{ role: 'assistant', content: welcomeMsg, auto: false }])
     setSessionId(null)
     setEscalated(false)
-    setShowEscalate(false)
+    setShowEscalateForm(false)
+    setEscalateFormShown(false)
+    setLeadFormShown(false)
     setRated(false)
     setShowRating(false)
     setSalesAction(null)
@@ -557,7 +755,41 @@ export default function ChatWidget({ config, botId }) {
               <div style={{ alignSelf: 'flex-start', maxWidth: '90%' }}>
                 {salesAction.type === 'discount' && <DiscountCard action={salesAction} accent={accent} />}
                 {salesAction.type === 'demo' && <DemoCard action={salesAction} accent={accent} />}
-                {salesAction.type === 'capture_lead' && <LeadCaptureCard onCapture={captureLeadFromAction} accent={accent} />}
+                {/* Lead capture flow (Flow A): buying-intent detected by Claude.
+                    Once-per-session guard keeps this from re-appearing after
+                    the visitor has already submitted or skipped. */}
+                {salesAction.type === 'capture_lead' && !leadFormShown && (
+                  <ContactForm
+                    title="Let me connect you with the right person"
+                    subtitle="Drop your details and we'll be in touch."
+                    submitLabel="Send"
+                    brandColor={accent}
+                    onSubmit={(fields) => {
+                      setLeadFormShown(true)
+                      captureLeadFromAction(fields)
+                    }}
+                    onSkip={() => {
+                      setLeadFormShown(true)
+                      skipLeadCapture()
+                    }}
+                  />
+                )}
+              </div>
+            )}
+
+            {/* Escalation flow (Flow B): visitor asked for a human OR Claude
+                signalled needs_escalation. Rendered inline in the transcript
+                — not as a separate banner — so it looks like a natural turn. */}
+            {showEscalateForm && !escalated && (
+              <div style={{ alignSelf: 'flex-start', maxWidth: '90%' }}>
+                <ContactForm
+                  title="I'll get a human to help you right now"
+                  subtitle="Leave your details so they can reach you."
+                  submitLabel="Connect me"
+                  brandColor={accent}
+                  onSubmit={handleEscalateSubmit}
+                  onSkip={handleEscalateSkip}
+                />
               </div>
             )}
 
@@ -594,21 +826,6 @@ export default function ChatWidget({ config, botId }) {
                 >{emoji}</button>
               ))}
               <button onClick={() => setShowRating(false)} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 18 }}>×</button>
-            </div>
-          )}
-
-          {/* Escalation Banner */}
-          {showEscalate && !escalated && (
-            <div style={{ padding: '12px 16px', background: '#FFF7ED', borderTop: '1px solid #FED7AA' }}>
-              <div style={{ fontSize: 13, fontWeight: 500, color: '#9A3412', marginBottom: 8 }}>
-                🚨 Would you like to speak with a human?
-              </div>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <input className="input" placeholder="Your email (optional)" value={escalateEmail}
-                  onChange={e => setEscalateEmail(e.target.value)} style={{ flex: 1, fontSize: 13 }} />
-                <button className="btn btn-primary" style={{ background: '#EA580C', padding: '6px 12px', fontSize: 13 }} onClick={handleEscalate}>Escalate</button>
-                <button onClick={() => setShowEscalate(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 18 }}>×</button>
-              </div>
             </div>
           )}
 
@@ -654,10 +871,24 @@ export default function ChatWidget({ config, botId }) {
           </div>
         </div>
 
-        {/* Escalate manually */}
-        {!escalated && !showEscalate && sessionId && (
+        {/* Manual escalation trigger — surfaces the same ContactForm flow
+            as the phrase-detection / AI-driven paths. Guarded by
+            escalateFormShown so the button hides after one use. */}
+        {!escalated && !showEscalateForm && !escalateFormShown && sessionId && (
           <div style={{ marginTop: 12, textAlign: 'center' }}>
-            <button className="btn btn-secondary" style={{ fontSize: 13 }} onClick={() => setShowEscalate(true)}>
+            <button
+              className="btn btn-secondary"
+              style={{ fontSize: 13 }}
+              onClick={() => {
+                setEscalateFormShown(true)
+                setMessages(prev => [...prev, {
+                  role: 'assistant',
+                  content: 'Of course! Let me get someone for you right away.',
+                  auto: false,
+                }])
+                setShowEscalateForm(true)
+              }}
+            >
               🙋 Request human support
             </button>
           </div>

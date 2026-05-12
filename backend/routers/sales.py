@@ -5,11 +5,17 @@ from sqlalchemy import func
 from pydantic import BaseModel
 from typing import Optional, List
 
-from backend.database import get_db, SalesConfig, Lead, Tenant, WebhookConfig, ErrorLog
+import structlog
+
+from backend.database import (
+    get_db, SalesConfig, Lead, Tenant, WebhookConfig, ErrorLog, BotConfig,
+)
 from backend.services.auth import get_current_client
 from backend.services.rate_limit import limiter, check_bot_id_rate_limit
 from backend.services.webhook_sender import dispatch_webhook
 from slowapi.util import get_remote_address
+
+log = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/api/sales", tags=["sales"])
 
@@ -37,16 +43,26 @@ def _log_notification_error(db: Session, bot_id: str, channel: str, error: Excep
 
 
 async def _fire_lead_captured_webhooks(db: Session, bot_id: str, lead: Lead) -> None:
-    """Dispatch a `lead_captured` event to every enabled webhook for this tenant.
+    """Dispatch a ``lead_captured`` event to every enabled webhook for this tenant.
 
     Fan-out pattern mirrors backend/routers/escalate.py:125-151 verbatim — each
     webhook gets an isolated try/except so one failure does not abort the others;
     per-webhook errors land in ErrorLog rather than bubbling to the request.
 
-    Subscription gate: `notify_on == "all"`. Custom-https webhooks created via
+    Subscription gate: ``notify_on == "all"``. Custom-https webhooks created via
     the new UI are forced to notify_on='all', so they match. Legacy slack/discord
     webhooks with notify_on='all' will also receive these — they explicitly opted
     into "all messages" so this matches the contract.
+
+    For custom_https receivers, the structured payload includes a ``contact``
+    block (with explicit nulls when the visitor skipped the form), the bot
+    business name, and the captured visitor message. Slack/Discord continue to
+    get the human-readable summary text only — their payload shapes are fixed.
+
+    Args:
+        db: Active SQLAlchemy session for ErrorLog writes.
+        bot_id: Tenant identifier; used to scope webhook lookup + payload.
+        lead: The freshly-committed Lead row to broadcast.
     """
     webhooks = db.query(WebhookConfig).filter(
         WebhookConfig.bot_id == bot_id,
@@ -56,13 +72,28 @@ async def _fire_lead_captured_webhooks(db: Session, bot_id: str, lead: Lead) -> 
     if not webhooks:
         return
 
+    bot_config = db.query(BotConfig).filter(BotConfig.bot_id == bot_id).first()
+    bot_name = bot_config.business_name if bot_config else None
+
+    contact = {
+        "name": lead.name,
+        "email": lead.email,
+        "phone": lead.phone,
+    }
     text = (
         f"New lead captured\n"
-        f"Email: {lead.email}\n"
-        f"Name: {lead.name or ''}\n"
+        f"Name: {lead.name or '—'}\n"
+        f"Email: {lead.email or '—'}\n"
+        f"Phone: {lead.phone or '—'}\n"
         f"Interest: {lead.interest or ''}\n"
         f"Source: {lead.source}"
     )
+    extra = {
+        "visitor_id": lead.visitor_id,
+        "bot_name": bot_name,
+        "message": lead.interest,
+        "contact": contact,
+    }
     for wh in webhooks:
         try:
             await dispatch_webhook(
@@ -72,8 +103,14 @@ async def _fire_lead_captured_webhooks(db: Session, bot_id: str, lead: Lead) -> 
                 secret=wh.secret,
                 events=wh.events,
                 event="lead_captured",
+                bot_id=bot_id,
+                extra=extra,
             )
         except Exception as e:
+            log.warning(
+                "lead_captured.webhook_failed",
+                bot_id=bot_id, webhook_id=wh.id, platform=wh.platform, error=str(e),
+            )
             _log_notification_error(db, bot_id, f"webhook_{wh.platform}", e)
 
 
@@ -131,8 +168,15 @@ def update_sales_config(
 # ── Leads ─────────────────────────────────────────────────────────────────────
 
 class LeadCreate(BaseModel):
-    email: str
+    """Inline lead-capture form payload — every contact field is optional.
+
+    A Skipped form is still a meaningful signal (the buying-intent score
+    fired) so we record the row with null contact details rather than
+    rejecting the request.
+    """
+    email: Optional[str] = None
     name: Optional[str] = None
+    phone: Optional[str] = None
     interest: Optional[str] = None
     source: str = "chat_capture"
     buying_signal_score: int = 1
@@ -146,8 +190,9 @@ class PublicLeadCreate(LeadCreate):
 
 class LeadResponse(BaseModel):
     id: int
-    email: str
+    email: Optional[str]
     name: Optional[str]
+    phone: Optional[str]
     interest: Optional[str]
     source: str
     buying_signal_score: int
@@ -155,6 +200,8 @@ class LeadResponse(BaseModel):
     conversation_id: Optional[int]
     created_at: datetime
     followed_up: bool
+    type: str
+    status: str
 
     class Config:
         from_attributes = True

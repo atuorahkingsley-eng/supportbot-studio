@@ -84,26 +84,68 @@ async def send_custom_https_webhook(
     text: str,
     secret: Optional[str],
     event: Optional[str] = None,
+    *,
+    bot_id: Optional[str] = None,
+    extra: Optional[dict] = None,
 ) -> bool:
     """POST a structured event envelope to a tenant-controlled HTTPS endpoint.
 
-    Body shape (locked-in contract — receivers depend on this):
+    Body shape (additive — legacy keys preserved for receivers built against
+    the original contract; new keys ride alongside so newer integrations get
+    structured data without breaking the old ones):
+
         {
-          "event":     "<event-type>" | null,
-          "text":      "<message>",
-          "timestamp": "<RFC3339 UTC, e.g. 2026-04-28T12:34:56Z>"
+          # ── Legacy keys (always present) ──
+          "event":      "<event-type>" | null,
+          "text":       "<human-readable summary>",
+          "timestamp":  "<RFC3339 UTC, e.g. 2026-04-28T12:34:56Z>",
+          # ── New keys (always present, may carry nulls) ──
+          "event_type": "<event-type>" | null,   # mirror of "event"
+          "bot_id":     "<tenant-id>" | null,
+          "data":       {<event-specific structured fields>} | {}
         }
+
+    For the lead_captured / escalation_triggered flow, callers populate
+    ``extra`` with::
+
+        {
+          "visitor_id": "...",
+          "bot_name":   "...",
+          "message":    "...",
+          "contact":    {"name": None|str, "email": None|str, "phone": None|str},
+          # plus event-specific fields, e.g. "reason" / "message_count"
+        }
+
+    Skipped contact fields stay as explicit ``None`` rather than being
+    omitted, so Activepieces / n8n receivers don't have to special-case
+    missing keys.
 
     Always signed (the route validator requires a secret on custom_https
     webhooks, so this should never be called without one — but we don't
     crash if it is, we just send unsigned).
+
+    Args:
+        webhook_url: Destination HTTPS endpoint configured by the tenant.
+        text: Human-readable summary, used as the legacy ``text`` field.
+        secret: HMAC-SHA256 key for signing the body. None disables signing.
+        event: Event type identifier (e.g. ``"lead_captured"``).
+        bot_id: Tenant identifier; surfaced at the top level for receivers.
+        extra: Structured event-specific fields nested under ``data``.
+
+    Returns:
+        True on any 2xx HTTP response, False otherwise.
     """
     payload = {
+        # Legacy contract — unchanged shape.
         "event": event,
         "text": text,
         "timestamp": datetime.now(timezone.utc)
         .isoformat(timespec="seconds")
         .replace("+00:00", "Z"),
+        # New structured envelope — additive.
+        "event_type": event,
+        "bot_id": bot_id,
+        "data": extra or {},
     }
     resp = await _post_signed_json(webhook_url, payload, secret)
     return 200 <= resp.status_code < 300
@@ -139,17 +181,36 @@ async def dispatch_webhook(
     secret: Optional[str] = None,
     events: Optional[str] = None,
     event: Optional[str] = None,
+    bot_id: Optional[str] = None,
+    extra: Optional[dict] = None,
 ) -> bool:
     """Send a notification to one webhook destination.
 
-    New keyword-only params (`secret`, `events`, `event`) default to None
-    so existing positional callers — `dispatch_webhook(platform, url, text)`
-    — keep working unchanged. They just won't get filtering or signing.
+    Keyword-only params (`secret`, `events`, `event`, `bot_id`, `extra`)
+    default to None so existing positional callers — ``dispatch_webhook(
+    platform, url, text)`` — keep working unchanged. They just won't get
+    filtering, signing, or structured payload data.
+
+    ``bot_id`` and ``extra`` are forwarded to ``send_custom_https_webhook``
+    where they populate the structured envelope; the slack/discord/whatsapp
+    senders use only the ``text`` field — their wire formats are fixed by
+    the platform.
+
+    Args:
+        platform: Destination platform identifier.
+        webhook_url: HTTPS endpoint URL.
+        text: Human-readable summary for slack/discord/whatsapp; also used
+            as the legacy ``text`` field on custom_https.
+        secret: HMAC-SHA256 key for custom_https signing.
+        events: JSON list of subscribed events; None = no filter.
+        event: This dispatch's event type, checked against ``events``.
+        bot_id: Tenant identifier; included in custom_https payloads.
+        extra: Structured fields nested under ``data`` in custom_https.
 
     Returns:
-      - True  on successful HTTP dispatch
-      - True  if the webhook isn't subscribed to this event (skip ≠ failure)
-      - False on transport / HTTP errors, or for unknown platforms
+        - True  on successful HTTP dispatch
+        - True  if the webhook isn't subscribed to this event (skip ≠ failure)
+        - False on transport / HTTP errors, or for unknown platforms
     """
     if not _event_subscribed(events, event):
         return True
@@ -161,5 +222,7 @@ async def dispatch_webhook(
     elif platform == "whatsapp":
         return await send_whatsapp_webhook(webhook_url, text)
     elif platform == "custom_https":
-        return await send_custom_https_webhook(webhook_url, text, secret, event)
+        return await send_custom_https_webhook(
+            webhook_url, text, secret, event, bot_id=bot_id, extra=extra,
+        )
     return False
