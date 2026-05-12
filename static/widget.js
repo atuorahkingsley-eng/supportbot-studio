@@ -4,6 +4,24 @@
   var position = script.getAttribute('data-position') || 'right';
   var baseUrl = script.src.replace('/widget.js', '');
 
+  // Allowed origin for inbound postMessage events. Derived from the script
+  // src so the same URL that serves widget.js (and the iframe) is the one
+  // we trust — no manual config drift between deployment and code. URL()
+  // parsing yields just the scheme+host+port, matching what event.origin
+  // returns from the iframe.
+  var ALLOWED_ORIGIN = null;
+  try {
+    ALLOWED_ORIGIN = new URL(baseUrl).origin;
+  } catch (e) {
+    // baseUrl wasn't a valid absolute URL; leave ALLOWED_ORIGIN null so
+    // the listener below rejects every message rather than failing open.
+  }
+
+  // Known message types. Strings (not object envelopes) match the existing
+  // iframe protocol; widening to objects would be a wire-format change
+  // beyond the scope of this fix.
+  var ALLOWED_MESSAGES = ['supportbot:notify', 'supportbot:close'];
+
   if (!botId) {
     console.error('SupportBot: data-bot-id attribute is required');
     return;
@@ -138,8 +156,20 @@
       greetingTimer = setTimeout(function () { showGreeting('Hi! Need help?'); }, GREETING_DELAY_MS);
     });
 
-  // Listen for messages from iframe
+  // Listen for messages from iframe.
+  //
+  // Two gates before any handler runs:
+  //   1. event.origin must match the origin that served widget.js (and
+  //      therefore the iframe). If ALLOWED_ORIGIN never resolved (bad
+  //      baseUrl), we reject every message — fail closed.
+  //   2. event.data must be one of the known string commands. Without
+  //      this, any page on the same origin (e.g. a dev console, a
+  //      sibling iframe, a malicious script that opened a same-origin
+  //      window) could fire 'supportbot:close' or trigger the badge.
   window.addEventListener('message', function (event) {
+    if (!ALLOWED_ORIGIN || event.origin !== ALLOWED_ORIGIN) return;
+    if (typeof event.data !== 'string' || ALLOWED_MESSAGES.indexOf(event.data) === -1) return;
+
     if (event.data === 'supportbot:notify') {
       if (!isOpen) {
         badge.style.display = 'flex';
