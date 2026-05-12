@@ -40,6 +40,8 @@ def list_visitors(
         q = q.filter(Visitor.email.isnot(None))
     elif has_email is False:
         q = q.filter(Visitor.email.is_(None))
+    if tag:
+        q = q.filter(Visitor.tags.contains(tag))
     visitors = q.limit(limit).all()
 
     result = []
@@ -49,8 +51,6 @@ def list_visitors(
             tags = json.loads(v.tags or "[]")
         except Exception:
             pass
-        if tag and tag not in tags:
-            continue
         result.append(VisitorResponse(
             visitor_id=v.visitor_id,
             email=v.email,
