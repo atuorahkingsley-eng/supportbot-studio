@@ -358,31 +358,22 @@ def export_leads(
 
     rows = q.all()
 
-    buf = io.StringIO()
-    # Inline csv.writer rather than reusing generate_conversations_csv —
-    # that one is shape-specific to conversations and we don't want to
-    # overload its signature for a different output.
-    import csv
+    filename = f"leads-{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}.csv"
 
-    writer = csv.writer(buf)
-    writer.writerow(
-        [
-            "id",
-            "created_at",
-            "type",
-            "status",
-            "name",
-            "email",
-            "phone",
-            "message",
-            "source",
-            "visitor_id",
-            "conversation_id",
+    def _lead_csv_generator(leads: list):
+        import csv, io
+        headers = [
+            "id", "created_at", "type", "status", "name", "email",
+            "phone", "message", "source", "visitor_id", "conversation_id",
         ]
-    )
-    for lead in rows:
-        writer.writerow(
-            [
+        buf = io.StringIO()
+        w = csv.writer(buf)
+        w.writerow(headers)
+        yield buf.getvalue()
+        for lead in leads:
+            buf = io.StringIO()
+            w = csv.writer(buf)
+            w.writerow([
                 lead.id,
                 lead.created_at.isoformat() if lead.created_at else "",
                 _safe_cell(lead.type),
@@ -394,12 +385,11 @@ def export_leads(
                 _safe_cell(lead.source),
                 _safe_cell(lead.visitor_id),
                 lead.conversation_id if lead.conversation_id is not None else "",
-            ]
-        )
+            ])
+            yield buf.getvalue()
 
-    filename = f"leads-{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}.csv"
     return StreamingResponse(
-        iter([buf.getvalue()]),
+        _lead_csv_generator(rows),
         media_type="text/csv",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
