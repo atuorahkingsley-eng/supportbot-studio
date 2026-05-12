@@ -127,6 +127,24 @@ If you cannot answer the question or the customer seems frustrated, suggest esca
     return prompt
 
 
+def _extract_first_json_object(text: str) -> dict | None:
+    start = text.find('{')
+    if start == -1:
+        return None
+    depth = 0
+    for i, ch in enumerate(text[start:], start):
+        if ch == '{':
+            depth += 1
+        elif ch == '}':
+            depth -= 1
+            if depth == 0:
+                try:
+                    return json.loads(text[start:i+1])
+                except json.JSONDecodeError:
+                    return None
+    return None
+
+
 def parse_metadata(raw_reply: str) -> dict:
     """Extract LANG and SALES_META tags from Claude's response, return clean reply + metadata."""
     reply = raw_reply
@@ -140,14 +158,13 @@ def parse_metadata(raw_reply: str) -> dict:
         # Remove the LANG line
         reply = re.sub(r'\nLANG:[a-z\-]{2,10}\s*', '', reply, flags=re.IGNORECASE)
 
-    # Extract SALES_META tag
-    sales_match = re.search(r'SALES_META:(\{[^}]+\})', reply, re.DOTALL)
-    if sales_match:
-        try:
-            sales_meta = json.loads(sales_match.group(1))
-        except Exception:
-            sales_meta = None
-        reply = re.sub(r'\nSALES_META:\{[^}]+\}\s*', '', reply, flags=re.DOTALL)
+    # Extract SALES_META tag using bracket counting — handles nested JSON
+    sales_prefix = 'SALES_META:'
+    sales_idx = reply.find(sales_prefix)
+    if sales_idx != -1:
+        meta_str = reply[sales_idx + len(sales_prefix):]
+        sales_meta = _extract_first_json_object(meta_str)
+        reply = reply[:sales_idx].rstrip()
 
     return {
         "reply": reply.strip(),
@@ -214,9 +231,9 @@ async def generate_visitor_summary(messages: list) -> dict:
             messages=[{"role": "user", "content": prompt}],
         )
         raw = response.content[0].text.strip()
-        match = re.search(r'\{.*\}', raw, re.DOTALL)
-        if match:
-            return json.loads(match.group())
+        obj = _extract_first_json_object(raw)
+        if obj:
+            return obj
     except Exception:
         pass
 
