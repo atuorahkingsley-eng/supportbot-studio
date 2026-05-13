@@ -65,6 +65,8 @@ export default function EmbedChat() {
   const messagesEndRef = useRef(null)
   const recognitionRef = useRef(null)
   const silenceTimerRef = useRef(null)
+  const escalationShownRef = useRef(false)
+  const escalatedRef = useRef(false)
   const [showEscalationForm, setShowEscalationForm] = useState(false)
   const [escalationShown, setEscalationShown] = useState(false)
   const [escalated, setEscalated] = useState(false)
@@ -113,10 +115,11 @@ export default function EmbedChat() {
     setSalesAction(null)
     setLastUserMessage(userMsg)
 
-    if (detectEscalationIntent(userMsg) && !escalationShown) {
+    if (detectEscalationIntent(userMsg) && !escalationShownRef.current) {
       setMessages(prev => [...prev,
         { role: 'assistant', content: "Of course! Please leave your contact details below and a team member will reach out to you via email or phone." }
       ])
+      escalationShownRef.current = true
       setEscalationShown(true)
       setShowEscalationForm(true)
       setLoading(false)
@@ -141,7 +144,8 @@ export default function EmbedChat() {
       if (data.is_returning) setIsReturning(true)
       if (data.detected_language) setDetectedLang(data.detected_language)
       if (data.sales_action) setSalesAction(data.sales_action)
-      if (data.needs_escalation && !escalated && !escalationShown) {
+      if (data.needs_escalation && !escalatedRef.current && !escalationShownRef.current) {
+        escalationShownRef.current = true
         setEscalationShown(true)
         setTimeout(() => setShowEscalationForm(true), 800)
       }
@@ -224,6 +228,7 @@ export default function EmbedChat() {
 
   const handleEscalationSubmit = async () => {
     setShowEscalationForm(false)
+    escalatedRef.current = true
     setEscalated(true)
     setMessages(prev => [...prev,
       { role: 'assistant', content: 'Thanks! A team member will reach out to you via email or phone shortly.' }
@@ -248,6 +253,7 @@ export default function EmbedChat() {
 
   const handleEscalationSkip = async () => {
     setShowEscalationForm(false)
+    escalatedRef.current = true
     setEscalated(true)
     setMessages(prev => [...prev,
       { role: 'assistant', content: 'No problem — feel free to keep chatting and a team member will join when available.' }
@@ -275,9 +281,11 @@ export default function EmbedChat() {
     setMessages([{ role: 'assistant', content: welcome }])
     setSessionId('sess_' + Math.random().toString(36).substring(2))
     setEscalationShown(false)
+    escalationShownRef.current = false
     setShowEscalationForm(false)
     setLastUserMessage('')
     setEscalated(false)
+    escalatedRef.current = false
     setSalesAction(null)
     setDetectedLang(null)
   }
