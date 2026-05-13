@@ -7,8 +7,15 @@ import asyncio
 from unittest.mock import ANY, patch, MagicMock
 
 import pytest
+
+import backend.services.email_notify as email_mod
 from backend.config import settings
 from backend.services.email_notify import send_escalation_email
+
+
+def _reset_probe_globals():
+    email_mod._smtp_port = None
+    email_mod._smtp_use_ssl = True
 
 
 @pytest.mark.asyncio
@@ -62,3 +69,69 @@ async def test_send_escalation_email_uses_ssl_on_configured_port():
     args, _ = mock_instance.sendmail.call_args
     assert args[0] == "smtp-user@example.com"  # From
     assert args[1] == "admin@example.com"       # To
+
+
+# ── Startup probe tests ───────────────────────────────────────────────────────
+
+def test_probe_uses_preferred_port_when_reachable():
+    """Preferred port reachable -> cache pins to it.
+    Given preferred=465, probe succeeds on first try.
+    """
+    _reset_probe_globals()
+    settings.zoho_smtp_user = "test@zoho.com"
+    settings.zoho_smtp_password = "testpass"
+    settings.zoho_smtp_host = "smtp.zoho.com"
+    settings.zoho_smtp_port = 465
+
+    with patch("socket.create_connection") as mock_conn:
+        mock_conn.return_value.__enter__ = lambda s: s
+        mock_conn.return_value.__exit__ = MagicMock(return_value=False)
+
+        email_mod.configure_smtp_at_startup()
+
+    assert email_mod._smtp_port == 465
+    assert email_mod._smtp_use_ssl is True
+    assert mock_conn.call_count == 1
+    assert mock_conn.call_args[0][0] == ("smtp.zoho.com", 465)
+
+
+def test_probe_falls_back_when_preferred_blocked():
+    """Preferred=587 blocked -> falls back to 465.
+    First probe (587) raises OSError. Second probe (465) succeeds.
+    """
+    _reset_probe_globals()
+    settings.zoho_smtp_user = "test@zoho.com"
+    settings.zoho_smtp_password = "testpass"
+    settings.zoho_smtp_host = "smtp.zoho.com"
+    settings.zoho_smtp_port = 587
+
+    def side_effect(address, timeout=3.0):
+        host, port = address
+        if port == 587:
+            raise OSError("Connection refused")
+        return MagicMock(
+            __enter__=lambda s: s,
+            __exit__=MagicMock(return_value=False),
+        )
+
+    with patch("socket.create_connection", side_effect=side_effect):
+        email_mod.configure_smtp_at_startup()
+
+    assert email_mod._smtp_port == 465
+    assert email_mod._smtp_use_ssl is True
+
+
+def test_probe_skipped_when_credentials_missing():
+    """No credentials -> probe never runs.
+    socket.create_connection should never be called.
+    """
+    _reset_probe_globals()
+    settings.zoho_smtp_user = ""
+    settings.zoho_smtp_password = ""
+
+    with patch("socket.create_connection") as mock_conn:
+        email_mod.configure_smtp_at_startup()
+
+    mock_conn.assert_not_called()
+    assert email_mod._smtp_port is None
+
