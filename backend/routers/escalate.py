@@ -77,7 +77,6 @@ def _resolve_contact(
     *,
     db: Session,
     bot_id: str,
-<<<<<<< HEAD
     convo: Conversation,
     visitor_id: Optional[str] = None,
     name: Optional[str] = None,
@@ -105,15 +104,6 @@ def _resolve_contact(
         str or None. Always returns all three keys so receivers can rely on
         shape stability.
     """
-=======
-    visitor_id: Optional[str],
-    customer_email: Optional[str],
-    name: Optional[str],
-    email: Optional[str],
-    phone: Optional[str],
-) -> dict[str, Optional[str]]:
-    """Merge contact details supplied on this request with the visitor's history."""
->>>>>>> 2c222c975f68bd1a257a9d3eae0f3433363f10cb
     prior: Optional[Lead] = None
     if visitor_id:
         prior = (
@@ -124,7 +114,7 @@ def _resolve_contact(
         )
     return {
         "name": name or (prior.name if prior else None),
-        "email": email or (prior.email if prior else None) or customer_email,
+        "email": email or (prior.email if prior else None) or convo.customer_email,
         "phone": phone or (prior.phone if prior else None),
     }
 
@@ -231,14 +221,8 @@ async def _do_escalate(
     convo_visitor_id = visitor_link.visitor_id if visitor_link else None
 
     contact = _resolve_contact(
-<<<<<<< HEAD
         db=db, bot_id=bot_id, convo=convo,
         visitor_id=convo_visitor_id,
-=======
-        db=db, bot_id=bot_id,
-        visitor_id=convo_visitor_id,
-        customer_email=convo.customer_email,
->>>>>>> 2c222c975f68bd1a257a9d3eae0f3433363f10cb
         name=name, email=effective_email, phone=phone,
     )
     normalised_reason = reason if reason in _VALID_REASONS else "customer_requested"
