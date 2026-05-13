@@ -392,32 +392,50 @@ function SuperAdminDashboard({ onLogout }) {
   }
 
   const TABS = [['overview', '📊 Overview'], ['tenants', '🏢 Tenants'], ['billing', '💳 Billing'], ['system', '⚙️ System'], ['health', '🏥 Health']]
+  const [menuOpen, setMenuOpen] = useState(false)
 
   return (
     <div style={{ '--accent': 'var(--color-cta)', minHeight: '100vh', background: 'var(--color-bg)' }}>
-      <header style={{ background: 'var(--header-bg)', color: '#fff', padding: '0 24px', display: 'flex', alignItems: 'center', gap: '32px', height: 56, position: 'sticky', top: 0, zIndex: 100 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+      <header className="admin-header">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
           <span style={{ fontSize: 22 }}>🛡️</span>
           <span style={{ fontWeight: 700, fontSize: 15, fontFamily: 'var(--font-mono)' }}>SupportBot · Super Admin</span>
         </div>
-        <nav style={{ display: 'flex', gap: 4 }}>
+        <nav className="admin-nav">
           {TABS.map(([id, label]) => (
             <button key={id} onClick={() => setTab(id)} style={{ padding: '6px 14px', borderRadius: 6, border: 'none', background: tab === id ? 'var(--color-cta)' : 'transparent', color: tab === id ? '#fff' : 'var(--color-muted)', fontWeight: 500, fontSize: 14, cursor: 'pointer', transition: 'background 150ms ease, color 150ms ease' }}>
               {label}
             </button>
           ))}
         </nav>
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+        <div className="admin-header-right">
           <button onClick={onLogout} style={{ background: 'none', border: '1px solid #52525B', color: '#A1A1AA', padding: '4px 10px', borderRadius: 4, cursor: 'pointer', fontSize: 12 }}>Logout</button>
         </div>
+        <button className="hamburger-btn" onClick={() => setMenuOpen(o => !o)} aria-label="Toggle menu" aria-expanded={menuOpen}>
+          {menuOpen ? '✕' : '☰'}
+        </button>
       </header>
+      {menuOpen && (
+        <nav className="mobile-nav">
+          {TABS.map(([id, label]) => (
+            <button key={id} className={tab === id ? 'active' : ''}
+              onClick={() => { setTab(id); setMenuOpen(false) }}>
+              {label}
+            </button>
+          ))}
+          <button onClick={() => { onLogout(); setMenuOpen(false) }}
+            style={{ borderTop: '1px solid #374151', marginTop: 4, paddingTop: 12, color: '#A1A1AA' }}>
+            Logout
+          </button>
+        </nav>
+      )}
 
-      <main style={{ padding: '24px', maxWidth: 1200, margin: '0 auto' }}>
+      <main className="super-admin-main">
 
         {/* Overview */}
         {tab === 'overview' && overview && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
+            <div className="grid-4" style={{ gap: 16 }}>
               {[
                 { label: 'Active Tenants', value: overview.active_tenants, icon: '🏢' },
                 { label: 'Messages This Month', value: overview.total_messages_this_month?.toLocaleString(), icon: '💬' },
@@ -449,12 +467,12 @@ function SuperAdminDashboard({ onLogout }) {
         {/* Tenants */}
         {tab === 'tenants' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div className="tenants-toolbar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <input className="input" placeholder="Search tenants…" value={search} onChange={e => setSearch(e.target.value)} style={{ width: 240 }} />
               <button className="btn btn-primary" onClick={() => { setEditTenant(null); setShowModal(true) }}>+ Create Tenant</button>
             </div>
             <div className="card" style={{ padding: 0 }}>
-              <div style={{ overflowX: 'auto' }}>
+              <div className="table-scroll" style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                   <thead>
                     <tr style={{ borderBottom: '2px solid var(--border)' }}>
@@ -484,7 +502,7 @@ function SuperAdminDashboard({ onLogout }) {
         {/* Billing */}
         {tab === 'billing' && billing && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
+            <div className="grid-3" style={{ gap: 16 }}>
               {[
                 { label: 'Total Revenue', value: '$' + billing.totals.revenue },
                 { label: 'API Costs', value: '$' + billing.totals.api_costs },
@@ -497,7 +515,7 @@ function SuperAdminDashboard({ onLogout }) {
               ))}
             </div>
             <div className="card" style={{ padding: 0 }}>
-              <div style={{ overflowX: 'auto' }}>
+              <div className="table-scroll" style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                   <thead>
                     <tr style={{ borderBottom: '2px solid var(--border)' }}>
@@ -592,7 +610,7 @@ function SuperAdminDashboard({ onLogout }) {
             {errorStats && (
               <div className="card">
                 <h3 className="section-title">Healing Stats (Last 24h)</h3>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
+                <div className="grid-4" style={{ gap: 16 }}>
                   {[
                     { label: 'Total Errors', value: errorStats.total_24h, color: undefined },
                     { label: 'Auto-Healed', value: `${errorStats.auto_healed} (${errorStats.heal_rate}%)`, color: '#16A34A' },
@@ -648,7 +666,7 @@ function SuperAdminDashboard({ onLogout }) {
                 </select>
                 <span style={{ marginLeft: 'auto', fontSize: 12, color: 'var(--text-secondary)' }}>{errors?.total || 0} total</span>
               </div>
-              <div style={{ overflowX: 'auto' }}>
+              <div className="table-scroll" style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                   <thead>
                     <tr style={{ borderBottom: '2px solid var(--border)' }}>
