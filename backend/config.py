@@ -18,11 +18,6 @@ class Settings(BaseSettings):
     telegram_bot_token: str = ""
     telegram_chat_id: str = ""
 
-    emailjs_service_id: str = ""
-    emailjs_template_id: str = ""
-    emailjs_public_key: str = ""
-    emailjs_private_key: str = ""
-
     # Zoho SMTP for escalation email delivery
     zoho_smtp_user: str = ""
     zoho_smtp_password: str = ""

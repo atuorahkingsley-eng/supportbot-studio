@@ -109,6 +109,3 @@ Sent by SupportBot Studio
     except Exception as e:
         log.error("escalation_email_unexpected_error", error=str(e), to=to_email)
         return False
-
-
-send_emailjs = send_escalation_email
