@@ -194,6 +194,9 @@ async def lifespan(app: FastAPI):
     _setup_super_admin()
     start_scheduler()
 
+    from backend.services.email_notify import configure_smtp_at_startup
+    configure_smtp_at_startup()
+
     from backend.services.report_scheduler import scheduler
     from backend.config import settings
 

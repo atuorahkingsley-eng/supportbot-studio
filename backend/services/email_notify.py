@@ -1,4 +1,5 @@
 import smtplib
+import socket
 import ssl
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -9,6 +10,68 @@ import structlog
 from backend.config import settings
 
 log = structlog.get_logger(__name__)
+
+_smtp_port: int | None = None
+_smtp_use_ssl: bool = True
+
+
+def _probe_port(host: str, port: int, timeout: float = 3.0) -> bool:
+    """Check TCP reachability of host:port.
+
+    Args:
+        host: SMTP server hostname.
+        port: Port number to probe.
+        timeout: Connection timeout in seconds.
+
+    Returns:
+        True if connection succeeds within timeout, False otherwise.
+    """
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
+def configure_smtp_at_startup() -> None:
+    """Probe preferred SMTP port at startup.
+
+    Falls back to alternate port if preferred is unreachable.
+    Sets module-level ``_smtp_port`` and ``_smtp_use_ssl``.
+    Idempotent — safe to call multiple times.
+    No-ops if credentials are missing.
+
+    If both ports fail, leaves globals at ``None`` so
+    ``send_escalation_email`` falls back to
+    ``settings.zoho_smtp_port`` (no behavioural regression
+    on transient probe failures).
+
+    Probe runs once at boot only. Re-probe requires redeploy.
+    """
+    global _smtp_port, _smtp_use_ssl
+
+    if not settings.zoho_smtp_user or not settings.zoho_smtp_password:
+        log.info("smtp.probe_skipped", reason="credentials_missing")
+        return
+
+    host = settings.zoho_smtp_host
+    preferred = settings.zoho_smtp_port
+    other = 465 if preferred == 587 else 587
+
+    if _probe_port(host, preferred):
+        _smtp_port = preferred
+        _smtp_use_ssl = preferred == 465
+        log.info("smtp.probe_ok", port=preferred)
+        return
+
+    if _probe_port(host, other):
+        _smtp_port = other
+        _smtp_use_ssl = other == 465
+        log.warning("smtp.probe_fellback_to", preferred=preferred, using=other)
+        return
+
+    _smtp_port = None
+    log.error("smtp.probe_failed", host=host, tried=[preferred, other])
 
 
 async def send_escalation_email(
@@ -91,13 +154,25 @@ Sent by SupportBot Studio
 
     try:
         context = ssl.create_default_context()
-        with smtplib.SMTP_SSL(
-            settings.zoho_smtp_host,
-            settings.zoho_smtp_port,
-            context=context,
-        ) as server:
-            server.login(settings.zoho_smtp_user, settings.zoho_smtp_password)
-            server.sendmail(settings.zoho_smtp_user, to_email, msg.as_string())
+        port = _smtp_port if _smtp_port is not None else settings.zoho_smtp_port
+        use_ssl = _smtp_use_ssl if _smtp_port is not None else True
+
+        if use_ssl:
+            with smtplib.SMTP_SSL(
+                settings.zoho_smtp_host,
+                port,
+                context=context,
+            ) as server:
+                server.login(settings.zoho_smtp_user, settings.zoho_smtp_password)
+                server.sendmail(settings.zoho_smtp_user, to_email, msg.as_string())
+        else:
+            with smtplib.SMTP(settings.zoho_smtp_host, port) as server:
+                server.ehlo()
+                server.starttls(context=context)
+                server.ehlo()
+                server.login(settings.zoho_smtp_user, settings.zoho_smtp_password)
+                server.sendmail(settings.zoho_smtp_user, to_email, msg.as_string())
+
         log.info("escalation_email_sent", to=to_email, bot=bot_name, session=session_id)
         return True
     except smtplib.SMTPAuthenticationError:
