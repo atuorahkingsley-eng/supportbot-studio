@@ -9,6 +9,28 @@ import { useParams } from 'react-router-dom'
 
 const LANG_NAMES = { en: '🇬🇧', es: '🇪🇸', fr: '🇫🇷', de: '🇩🇪', pt: '🇧🇷', ar: '🇸🇦', zh: '🇨🇳', ja: '🇯🇵', ko: '🇰🇷', hi: '🇮🇳', sw: '🇰🇪', nl: '🇳🇱', it: '🇮🇹', ru: '🇷🇺' }
 
+// Must match ChatWidget.jsx exactly
+const ESCALATION_PHRASES = [
+  'speak to a human',
+  'talk to a person',
+  'real person',
+  'human agent',
+  'customer service',
+  'speak to someone',
+  'escalate',
+  'transfer me',
+  'live agent',
+  'support team',
+  'talk to support',
+];
+
+function detectEscalationIntent(text) {
+  const lower = text.toLowerCase().trim();
+  return ESCALATION_PHRASES.some(phrase =>
+    lower.includes(phrase)
+  );
+}
+
 // Cookie helpers
 function getCookie(name) {
   const m = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'))
@@ -43,6 +65,8 @@ export default function EmbedChat() {
   const [escalated, setEscalated] = useState(false)
   const [escalateFormShown, setEscalateFormShown] = useState(false)
   const [showEscalateForm, setShowEscalateForm] = useState(false)
+  const [escalationShown, setEscalationShown] = useState(false)
+  const [lastUserMessage, setLastUserMessage] = useState('')
   const [escName, setEscName] = useState('')
   const [escEmail, setEscEmail] = useState('')
   const [escPhone, setEscPhone] = useState('')
@@ -91,6 +115,17 @@ export default function EmbedChat() {
     if (!text.trim() || loading) return
     const userMsg = text.trim()
     setInput('')
+
+    // Phrase detection — show escalation form immediately, skip chat endpoint
+    if (detectEscalationIntent(userMsg) && !escalationShown) {
+      setEscalationShown(true)
+      setLastUserMessage(userMsg)
+      setMessages(prev => [...prev, { role: 'user', content: userMsg }, { role: 'assistant', content: 'Of course! Let me get someone for you right away.' }])
+      setTimeout(() => setShowEscalateForm(true), 200)
+      return
+    }
+
+    setLastUserMessage(userMsg)
     setMessages(prev => [...prev, { role: 'user', content: userMsg }])
     setLoading(true)
     setSalesAction(null)
@@ -114,7 +149,8 @@ export default function EmbedChat() {
       if (data.detected_language) setDetectedLang(data.detected_language)
       if (data.sales_action) setSalesAction(data.sales_action)
 
-      if (data.needs_escalation && !escalated && !escalateFormShown) {
+      if (data.needs_escalation && !escalated && !escalateFormShown && !escalationShown) {
+        setEscalationShown(true)
         setEscalateFormShown(true)
         setTimeout(() => setShowEscalateForm(true), 800)
       }
@@ -206,20 +242,37 @@ export default function EmbedChat() {
         body: JSON.stringify({
           bot_id: botId,
           session_id: sessionId,
-          customer_email: escEmail || null,
+          visitor_id: visitorId,
+          message: lastUserMessage,
           name: escName || null,
           email: escEmail || null,
           phone: escPhone || null,
-          reason: escReason || 'customer_requested',
+          reason: 'customer_requested',
         }),
       })
     } catch { /* escalation queued fallback */ }
     setMessages(prev => [...prev, { role: 'assistant', content: 'We\'ve notified our team. Someone will get back to you shortly.' }])
   }
 
-  const handleEscalateSkip = () => {
+  const handleEscalateSkip = async () => {
     setEscalated(true)
     setShowEscalateForm(false)
+    try {
+      await fetch('/api/escalate/public', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          bot_id: botId,
+          session_id: sessionId,
+          visitor_id: visitorId,
+          message: lastUserMessage,
+          name: null,
+          email: null,
+          phone: null,
+          reason: 'customer_requested',
+        }),
+      })
+    } catch { /* escalation queued fallback */ }
   }
 
   if (!config) {
@@ -299,9 +352,9 @@ export default function EmbedChat() {
           </div>
         )}
 
-        {!escalated && !showEscalateForm && messages.length >= 2 && (
+        {!escalated && !showEscalateForm && !escalationShown && messages.length >= 2 && (
           <div style={{ textAlign: 'center', margin: '6px 0' }}>
-            <button onClick={() => setShowEscalateForm(true)} style={{ background: 'transparent', border: '1px solid #D1D5DB', borderRadius: 16, padding: '5px 14px', cursor: 'pointer', fontSize: 12, color: '#6B7280', transition: 'all 0.2s' }}
+            <button onClick={() => { setEscalationShown(true); setShowEscalateForm(true); }} style={{ background: 'transparent', border: '1px solid #D1D5DB', borderRadius: 16, padding: '5px 14px', cursor: 'pointer', fontSize: 12, color: '#6B7280', transition: 'all 0.2s' }}
               onMouseEnter={e => e.currentTarget.style.borderColor = accent}
               onMouseLeave={e => e.currentTarget.style.borderColor = '#D1D5DB'}
             >Request human support</button>
