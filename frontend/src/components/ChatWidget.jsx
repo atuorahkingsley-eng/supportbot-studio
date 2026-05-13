@@ -629,7 +629,7 @@ export default function ChatWidget({ config, botId }) {
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start' }}>
+    <div className="chat-widget-layout">
       {/* Phase 3: Exit Intent Overlay */}
       {showExitIntent && salesConfig && (
         <div style={{

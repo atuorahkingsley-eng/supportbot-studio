@@ -9,7 +9,10 @@ import { useParams } from 'react-router-dom'
 
 const LANG_NAMES = { en: '🇬🇧', es: '🇪🇸', fr: '🇫🇷', de: '🇩🇪', pt: '🇧🇷', ar: '🇸🇦', zh: '🇨🇳', ja: '🇯🇵', ko: '🇰🇷', hi: '🇮🇳', sw: '🇰🇪', nl: '🇳🇱', it: '🇮🇹', ru: '🇷🇺' }
 
+<<<<<<< HEAD
 // Must match ChatWidget.jsx exactly
+=======
+>>>>>>> 2c222c975f68bd1a257a9d3eae0f3433363f10cb
 const ESCALATION_PHRASES = [
   'speak to a human',
   'talk to a person',
@@ -22,6 +25,7 @@ const ESCALATION_PHRASES = [
   'live agent',
   'support team',
   'talk to support',
+<<<<<<< HEAD
 ];
 
 function detectEscalationIntent(text) {
@@ -29,6 +33,13 @@ function detectEscalationIntent(text) {
   return ESCALATION_PHRASES.some(phrase =>
     lower.includes(phrase)
   );
+=======
+]
+
+function detectEscalationIntent(text) {
+  const lower = text.toLowerCase().trim()
+  return ESCALATION_PHRASES.some(phrase => lower.includes(phrase))
+>>>>>>> 2c222c975f68bd1a257a9d3eae0f3433363f10cb
 }
 
 // Cookie helpers
@@ -77,6 +88,13 @@ export default function EmbedChat() {
   const messagesEndRef = useRef(null)
   const recognitionRef = useRef(null)
   const silenceTimerRef = useRef(null)
+  const escalationShownRef = useRef(false)
+  const escalatedRef = useRef(false)
+  const [showEscalationForm, setShowEscalationForm] = useState(false)
+  const [escalationShown, setEscalationShown] = useState(false)
+  const [escalated, setEscalated] = useState(false)
+  const [contact, setContact] = useState({ name: '', email: '', phone: '' })
+  const [lastUserMessage, setLastUserMessage] = useState('')
 
   const browserLang = navigator.language?.split('-')[0] || 'en'
 
@@ -129,6 +147,18 @@ export default function EmbedChat() {
     setMessages(prev => [...prev, { role: 'user', content: userMsg }])
     setLoading(true)
     setSalesAction(null)
+    setLastUserMessage(userMsg)
+
+    if (detectEscalationIntent(userMsg) && !escalationShownRef.current) {
+      setMessages(prev => [...prev,
+        { role: 'assistant', content: "Of course! Please leave your contact details below and a team member will reach out to you via email or phone." }
+      ])
+      escalationShownRef.current = true
+      setEscalationShown(true)
+      setShowEscalationForm(true)
+      setLoading(false)
+      return
+    }
 
     try {
       const r = await fetch('/api/chat/public', {
@@ -148,6 +178,11 @@ export default function EmbedChat() {
       if (data.is_returning) setIsReturning(true)
       if (data.detected_language) setDetectedLang(data.detected_language)
       if (data.sales_action) setSalesAction(data.sales_action)
+      if (data.needs_escalation && !escalatedRef.current && !escalationShownRef.current) {
+        escalationShownRef.current = true
+        setEscalationShown(true)
+        setTimeout(() => setShowEscalationForm(true), 800)
+      }
 
       if (data.needs_escalation && !escalated && !escalateFormShown && !escalationShown) {
         setEscalationShown(true)
@@ -231,12 +266,24 @@ export default function EmbedChat() {
     finally { setLeadCapturing(false) }
   }
 
+<<<<<<< HEAD
   const handleEscalateSubmit = async (e) => {
     e.preventDefault()
     setEscalated(true)
     setShowEscalateForm(false)
     try {
       const r = await fetch('/api/escalate/public', {
+=======
+  const handleEscalationSubmit = async () => {
+    setShowEscalationForm(false)
+    escalatedRef.current = true
+    setEscalated(true)
+    setMessages(prev => [...prev,
+      { role: 'assistant', content: 'Thanks! A team member will reach out to you via email or phone shortly.' }
+    ])
+    try {
+      await fetch('/api/escalate/public', {
+>>>>>>> 2c222c975f68bd1a257a9d3eae0f3433363f10cb
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -244,6 +291,7 @@ export default function EmbedChat() {
           session_id: sessionId,
           visitor_id: visitorId,
           message: lastUserMessage,
+<<<<<<< HEAD
           name: escName || null,
           email: escEmail || null,
           phone: escPhone || null,
@@ -261,6 +309,26 @@ export default function EmbedChat() {
     setShowEscalateForm(false)
     try {
       const r = await fetch('/api/escalate/public', {
+=======
+          name: contact.name || null,
+          email: contact.email || null,
+          phone: contact.phone || null,
+          reason: 'customer_requested',
+        }),
+      })
+    } catch { /* silently fail — backend PendingEscalation handles retry */ }
+  }
+
+  const handleEscalationSkip = async () => {
+    setShowEscalationForm(false)
+    escalatedRef.current = true
+    setEscalated(true)
+    setMessages(prev => [...prev,
+      { role: 'assistant', content: 'No problem — feel free to keep chatting and a team member will join when available.' }
+    ])
+    try {
+      await fetch('/api/escalate/public', {
+>>>>>>> 2c222c975f68bd1a257a9d3eae0f3433363f10cb
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -274,8 +342,26 @@ export default function EmbedChat() {
           reason: 'customer_requested',
         }),
       })
+<<<<<<< HEAD
       if (!r.ok) return
     } catch { /* escalation queued fallback */ }
+=======
+    } catch { /* silently fail */ }
+  }
+
+  const resetChat = () => {
+    const welcome = config?.welcome_message || 'Hi! How can I help?'
+    setMessages([{ role: 'assistant', content: welcome }])
+    setSessionId('sess_' + Math.random().toString(36).substring(2))
+    setEscalationShown(false)
+    escalationShownRef.current = false
+    setShowEscalationForm(false)
+    setLastUserMessage('')
+    setEscalated(false)
+    escalatedRef.current = false
+    setSalesAction(null)
+    setDetectedLang(null)
+>>>>>>> 2c222c975f68bd1a257a9d3eae0f3433363f10cb
   }
 
   if (!config) {
@@ -392,6 +478,38 @@ export default function EmbedChat() {
                 </form>
               </div>
             )}
+          </div>
+        )}
+
+        {showEscalationForm && !escalated && (
+          <div style={{ alignSelf: 'flex-start', maxWidth: '90%', background: '#fff', border: '1px solid #E5E7EB', borderRadius: 10, padding: '14px 16px', margin: '4px 0', boxShadow: '0 1px 2px rgba(0,0,0,0.04)' }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: '#1F2937', marginBottom: 4 }}>
+              I'll get a human to help you right now
+            </div>
+            <div style={{ fontSize: 12.5, color: '#6B7280', marginBottom: 10 }}>
+              A team member will reach out via email or phone — just leave your details below.
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <input type="text" placeholder="Name" value={contact.name}
+                onChange={e => setContact(c => ({ ...c, name: e.target.value }))}
+                style={{ border: '1px solid #E5E7EB', borderRadius: 6, padding: '7px 10px', fontSize: 13, outline: 'none' }} />
+              <input type="email" placeholder="Email" value={contact.email}
+                onChange={e => setContact(c => ({ ...c, email: e.target.value }))}
+                style={{ border: '1px solid #E5E7EB', borderRadius: 6, padding: '7px 10px', fontSize: 13, outline: 'none' }} />
+              <input type="tel" placeholder="Phone (optional)" value={contact.phone}
+                onChange={e => setContact(c => ({ ...c, phone: e.target.value }))}
+                style={{ border: '1px solid #E5E7EB', borderRadius: 6, padding: '7px 10px', fontSize: 13, outline: 'none' }} />
+              <div style={{ display: 'flex', gap: 8, marginTop: 2 }}>
+                <button onClick={handleEscalationSubmit}
+                  style={{ flex: 1, background: accent, color: '#fff', border: 'none', borderRadius: 6, padding: '8px 12px', fontSize: 13, cursor: 'pointer', fontWeight: 500 }}>
+                  Connect me
+                </button>
+                <button onClick={handleEscalationSkip}
+                  style={{ background: 'transparent', color: '#6B7280', border: '1px solid #E5E7EB', borderRadius: 6, padding: '8px 12px', fontSize: 13, cursor: 'pointer' }}>
+                  Skip
+                </button>
+              </div>
+            </div>
           </div>
         )}
 

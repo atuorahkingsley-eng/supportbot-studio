@@ -49,7 +49,7 @@
   frame.id = 'supportbot-frame';
   frame.src = baseUrl + '/embed/' + botId;
   frame.style.cssText =
-    'width:400px;height:600px;max-height:80vh;border:none;border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,0.15);display:none;margin-bottom:12px;background:white;';
+    'width:min(400px,calc(100vw - 40px));height:600px;max-height:80vh;border:none;border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,0.15);display:none;margin-bottom:12px;background:white;';
   frame.setAttribute('allow', 'microphone');
 
   // Notification badge

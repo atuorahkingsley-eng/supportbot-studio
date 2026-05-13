@@ -49,6 +49,7 @@ class EscalateRequest(BaseModel):
 class PublicEscalateRequest(BaseModel):
     bot_id: str
     session_id: str
+    visitor_id: Optional[str] = None
     customer_email: Optional[str] = None
     name: Optional[str] = None
     email: Optional[str] = None
@@ -76,6 +77,7 @@ def _resolve_contact(
     *,
     db: Session,
     bot_id: str,
+<<<<<<< HEAD
     convo: Conversation,
     visitor_id: Optional[str] = None,
     name: Optional[str] = None,
@@ -103,6 +105,15 @@ def _resolve_contact(
         str or None. Always returns all three keys so receivers can rely on
         shape stability.
     """
+=======
+    visitor_id: Optional[str],
+    customer_email: Optional[str],
+    name: Optional[str],
+    email: Optional[str],
+    phone: Optional[str],
+) -> dict[str, Optional[str]]:
+    """Merge contact details supplied on this request with the visitor's history."""
+>>>>>>> 2c222c975f68bd1a257a9d3eae0f3433363f10cb
     prior: Optional[Lead] = None
     if visitor_id:
         prior = (
@@ -113,7 +124,7 @@ def _resolve_contact(
         )
     return {
         "name": name or (prior.name if prior else None),
-        "email": email or (prior.email if prior else None) or convo.customer_email,
+        "email": email or (prior.email if prior else None) or customer_email,
         "phone": phone or (prior.phone if prior else None),
     }
 
@@ -124,6 +135,7 @@ async def _do_escalate(
     bot_id: str,
     db: Session,
     *,
+    visitor_id: Optional[str] = None,
     name: Optional[str] = None,
     email: Optional[str] = None,
     phone: Optional[str] = None,
@@ -170,15 +182,37 @@ async def _do_escalate(
         channel delivered. Raises HTTPException(500) when every channel
         failed; a PendingEscalation row is queued for retry first.
     """
-    # Tenant isolation: a session_id alone is NOT a sufficient lookup key —
-    # an attacker could pass another tenant's UUID and route their transcript
-    # to our notification channels. Always pin to (session_id, bot_id).
+    # Tenant isolation: always pin to (session_id, bot_id) — session_id alone
+    # is not a sufficient key. If no conversation exists yet (phrase-detection
+    # escalation fires before any API message is sent), create a minimal one.
     convo = db.query(Conversation).filter(
         Conversation.session_id == session_id,
         Conversation.bot_id == bot_id,
     ).first()
     if not convo:
-        raise HTTPException(status_code=404, detail="Conversation not found")
+        convo = Conversation(session_id=session_id, bot_id=bot_id)
+        db.add(convo)
+        db.commit()
+        db.refresh(convo)
+
+    # visitor_id lives in VisitorConversation (join table), not on Conversation.
+    # Prefer the join-table value; fall back to the value passed on this request
+    # (present when the embed widget sends it but no chat message preceded the
+    # escalation, so no VisitorConversation row exists yet).
+    vc_link = db.query(VisitorConversation).filter(
+        VisitorConversation.conversation_id == convo.id,
+    ).first()
+    convo_visitor_id = (vc_link.visitor_id if vc_link else None) or visitor_id
+
+    # If we know the visitor_id and there's no join-table row yet, create one
+    # so downstream Lead lookups and visitor history features work normally.
+    if convo_visitor_id and not vc_link:
+        db.add(VisitorConversation(
+            visitor_id=convo_visitor_id,
+            conversation_id=convo.id,
+            bot_id=bot_id,
+        ))
+        db.commit()
 
     messages = db.query(Message).filter(
         Message.conversation_id == convo.id
@@ -188,8 +222,6 @@ async def _do_escalate(
     business_name = bot_config.business_name if bot_config else "SupportBot"
 
     # ── Resolve final email + contact details ─────────────────────────────────
-    # email arg wins, falling back to legacy customer_email; ``customer_email``
-    # in the request body remains supported but is treated as email-only input.
     effective_email = email or customer_email
 
     # Conversation has no visitor_id column — look it up via the join table.
@@ -199,8 +231,14 @@ async def _do_escalate(
     convo_visitor_id = visitor_link.visitor_id if visitor_link else None
 
     contact = _resolve_contact(
+<<<<<<< HEAD
         db=db, bot_id=bot_id, convo=convo,
         visitor_id=convo_visitor_id,
+=======
+        db=db, bot_id=bot_id,
+        visitor_id=convo_visitor_id,
+        customer_email=convo.customer_email,
+>>>>>>> 2c222c975f68bd1a257a9d3eae0f3433363f10cb
         name=name, email=effective_email, phone=phone,
     )
     normalised_reason = reason if reason in _VALID_REASONS else "customer_requested"
@@ -380,7 +418,7 @@ async def _do_escalate(
     try:
         escalation_lead = Lead(
             bot_id=bot_id,
-            visitor_id=convo.visitor_id,
+            visitor_id=convo_visitor_id,
             name=contact["name"],
             email=contact["email"],
             phone=contact["phone"],
@@ -434,6 +472,7 @@ async def public_escalate(
         data.customer_email,
         data.bot_id,
         db,
+        visitor_id=data.visitor_id,
         name=data.name,
         email=data.email,
         phone=data.phone,

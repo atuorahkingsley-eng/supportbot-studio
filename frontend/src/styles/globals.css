@@ -246,6 +246,115 @@ table td, table th { border-bottom: 1px solid var(--color-border); }
   gap: 16px;
 }
 
+/* ── 3-column grid ───────────────────────────────────── */
+.grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+/* ── Admin header ─────────────────────────────────────── */
+.admin-header {
+  background: var(--header-bg);
+  color: #fff;
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  gap: 32px;
+  height: 56px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.admin-nav { display: flex; gap: 4px; }
+
+.admin-header-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.hamburger-btn {
+  display: none;
+  background: none;
+  border: none;
+  color: #A1A1AA;
+  font-size: 22px;
+  cursor: pointer;
+  padding: 4px 8px;
+  line-height: 1;
+  margin-left: auto;
+}
+
+.mobile-nav { display: none; }
+
+/* ── ChatWidget two-column layout ─────────────────────── */
+.chat-widget-layout {
+  display: flex;
+  gap: 24px;
+  align-items: flex-start;
+}
+
+/* ── Admin main content areas ─────────────────────────── */
+.admin-main {
+  padding: 24px;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.super-admin-main {
+  padding: 24px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+/* ── Responsive breakpoints ───────────────────────────── */
 @media (max-width: 768px) {
-  .grid-2, .grid-4 { grid-template-columns: 1fr; }
+  .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
+
+  .admin-header { gap: 12px; padding: 0 16px; }
+  .admin-nav    { display: none; }
+  .admin-header-right { display: none; }
+  .hamburger-btn { display: flex; align-items: center; }
+
+  .mobile-nav {
+    display: flex;
+    flex-direction: column;
+    background: var(--header-bg);
+    position: sticky;
+    top: 56px;
+    z-index: 99;
+    border-top: 1px solid #374151;
+    padding: 4px 0 8px;
+  }
+
+  .mobile-nav button {
+    padding: 11px 20px;
+    text-align: left;
+    background: none;
+    border: none;
+    color: #A1A1AA;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    font-family: var(--font-body);
+    transition: background 150ms ease;
+  }
+  .mobile-nav button:hover  { background: rgba(255,255,255,0.06); }
+  .mobile-nav button.active { color: #fff; background: rgba(255,255,255,0.10); }
+
+  .chat-widget-layout { flex-direction: column; }
+
+  .admin-main, .super-admin-main { padding: 16px; }
+
+  .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+  .tenants-toolbar {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 10px;
+  }
+  .tenants-toolbar .input { width: 100% !important; }
 }
