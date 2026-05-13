@@ -76,6 +76,7 @@ function ClientAdminLayout() {
   const navigate = useNavigate()
   const addToast = useContext(ToastContext)
   const [activeTab, setActiveTab] = useState('configure')
+  const [menuOpen, setMenuOpen] = useState(false)
   const [config, setConfig] = useState({
     business_name: 'My Business',
     agent_name: 'SupportBot',
@@ -107,31 +108,46 @@ function ClientAdminLayout() {
 
   return (
     <div style={{ '--accent': accent, minHeight: '100vh', background: 'var(--body-bg)' }}>
-      <header style={{ background: 'var(--header-bg)', color: '#fff', padding: '0 24px', display: 'flex', alignItems: 'center', gap: '32px', height: 56, position: 'sticky', top: 0, zIndex: 100 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+      <header className="admin-header">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
           <div style={{ width: 28, height: 28, borderRadius: 8, background: accent, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16 }}>🤖</div>
           <span style={{ fontWeight: 700, fontSize: 15, fontFamily: 'var(--font-mono)' }}>SupportBot Studio</span>
         </div>
-        <nav style={{ display: 'flex', gap: 4 }}>
+        <nav className="admin-nav">
           {TABS.map(tab => (
             <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{ padding: '6px 14px', borderRadius: 6, border: 'none', background: activeTab === tab.id ? accent : 'transparent', color: activeTab === tab.id ? '#fff' : '#A1A1AA', fontWeight: 500, fontSize: 14, cursor: 'pointer', transition: 'all 0.15s' }}>
               {tab.label}
             </button>
           ))}
         </nav>
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 16 }}>
+        <div className="admin-header-right">
           <span style={{ fontSize: 12, color: '#A1A1AA' }}>
             {user.plan?.toUpperCase()} · {(user.messages_used || 0).toLocaleString()}/{(user.message_limit || 0).toLocaleString()} msgs
           </span>
           <span className="status-dot status-dot-green" />
           <span style={{ fontSize: 13, color: '#A1A1AA' }}>{user.company_name}</span>
-          <button onClick={handleLogout} style={{ background: 'none', border: '1px solid #52525B', color: '#A1A1AA', padding: '4px 10px', borderRadius: 4, cursor: 'pointer', fontSize: 12 }}>
+          <button onClick={handleLogout} style={{ background: 'none', border: '1px solid #52525B', color: '#A1A1AA', padding: '4px 10px', borderRadius: 4, cursor: 'pointer', fontSize: 12 }}>Logout</button>
+        </div>
+        <button className="hamburger-btn" onClick={() => setMenuOpen(o => !o)} aria-label="Toggle menu" aria-expanded={menuOpen}>
+          {menuOpen ? '✕' : '☰'}
+        </button>
+      </header>
+      {menuOpen && (
+        <nav className="mobile-nav">
+          {TABS.map(tab => (
+            <button key={tab.id} className={activeTab === tab.id ? 'active' : ''}
+              onClick={() => { setActiveTab(tab.id); setMenuOpen(false) }}>
+              {tab.label}
+            </button>
+          ))}
+          <button onClick={() => { handleLogout(); setMenuOpen(false) }}
+            style={{ borderTop: '1px solid #374151', marginTop: 4, paddingTop: 12, color: '#A1A1AA' }}>
             Logout
           </button>
-        </div>
-      </header>
+        </nav>
+      )}
 
-      <main style={{ padding: '24px', maxWidth: 1100, margin: '0 auto' }}>
+      <main className="admin-main">
         {activeTab === 'configure' && <AdminPanel config={config} setConfig={setConfig} />}
         {activeTab === 'chat' && <ChatWidget config={config} botId={user.bot_id} />}
         {activeTab === 'analytics' && <AnalyticsDashboard />}

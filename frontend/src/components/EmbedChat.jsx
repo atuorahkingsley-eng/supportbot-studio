@@ -9,6 +9,25 @@ import { useParams } from 'react-router-dom'
 
 const LANG_NAMES = { en: '🇬🇧', es: '🇪🇸', fr: '🇫🇷', de: '🇩🇪', pt: '🇧🇷', ar: '🇸🇦', zh: '🇨🇳', ja: '🇯🇵', ko: '🇰🇷', hi: '🇮🇳', sw: '🇰🇪', nl: '🇳🇱', it: '🇮🇹', ru: '🇷🇺' }
 
+const ESCALATION_PHRASES = [
+  'speak to a human',
+  'talk to a person',
+  'real person',
+  'human agent',
+  'customer service',
+  'speak to someone',
+  'escalate',
+  'transfer me',
+  'live agent',
+  'support team',
+  'talk to support',
+]
+
+function detectEscalationIntent(text) {
+  const lower = text.toLowerCase().trim()
+  return ESCALATION_PHRASES.some(phrase => lower.includes(phrase))
+}
+
 // Cookie helpers
 function getCookie(name) {
   const m = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'))
@@ -46,6 +65,11 @@ export default function EmbedChat() {
   const messagesEndRef = useRef(null)
   const recognitionRef = useRef(null)
   const silenceTimerRef = useRef(null)
+  const [showEscalationForm, setShowEscalationForm] = useState(false)
+  const [escalationShown, setEscalationShown] = useState(false)
+  const [escalated, setEscalated] = useState(false)
+  const [contact, setContact] = useState({ name: '', email: '', phone: '' })
+  const [lastUserMessage, setLastUserMessage] = useState('')
 
   const browserLang = navigator.language?.split('-')[0] || 'en'
 
@@ -87,6 +111,17 @@ export default function EmbedChat() {
     setMessages(prev => [...prev, { role: 'user', content: userMsg }])
     setLoading(true)
     setSalesAction(null)
+    setLastUserMessage(userMsg)
+
+    if (detectEscalationIntent(userMsg) && !escalationShown) {
+      setMessages(prev => [...prev,
+        { role: 'assistant', content: "Of course! Let me get someone for you right away." }
+      ])
+      setEscalationShown(true)
+      setShowEscalationForm(true)
+      setLoading(false)
+      return
+    }
 
     try {
       const r = await fetch('/api/chat/public', {
@@ -106,6 +141,10 @@ export default function EmbedChat() {
       if (data.is_returning) setIsReturning(true)
       if (data.detected_language) setDetectedLang(data.detected_language)
       if (data.sales_action) setSalesAction(data.sales_action)
+      if (data.needs_escalation && !escalated && !escalationShown) {
+        setEscalationShown(true)
+        setTimeout(() => setShowEscalationForm(true), 800)
+      }
 
       // Notify parent to show badge if widget is closed
       if (window.parent !== window) {
@@ -181,6 +220,66 @@ export default function EmbedChat() {
       setMessages(prev => [...prev, { role: 'assistant', content: `Thanks! We'll reach out to ${leadEmail} shortly.` }])
     } catch { /* silently fail */ }
     finally { setLeadCapturing(false) }
+  }
+
+  const handleEscalationSubmit = async () => {
+    setShowEscalationForm(false)
+    setEscalated(true)
+    setMessages(prev => [...prev,
+      { role: 'assistant', content: 'Thanks! A team member will be in touch shortly.' }
+    ])
+    try {
+      await fetch('/api/escalate/public', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          bot_id: botId,
+          session_id: sessionId,
+          visitor_id: visitorId,
+          message: lastUserMessage,
+          name: contact.name || null,
+          email: contact.email || null,
+          phone: contact.phone || null,
+          reason: 'customer_requested',
+        }),
+      })
+    } catch { /* silently fail — backend PendingEscalation handles retry */ }
+  }
+
+  const handleEscalationSkip = async () => {
+    setShowEscalationForm(false)
+    setEscalated(true)
+    setMessages(prev => [...prev,
+      { role: 'assistant', content: 'No problem — feel free to keep chatting and a team member will join when available.' }
+    ])
+    try {
+      await fetch('/api/escalate/public', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          bot_id: botId,
+          session_id: sessionId,
+          visitor_id: visitorId,
+          message: lastUserMessage,
+          name: null,
+          email: null,
+          phone: null,
+          reason: 'customer_requested',
+        }),
+      })
+    } catch { /* silently fail */ }
+  }
+
+  const resetChat = () => {
+    const welcome = config?.welcome_message || 'Hi! How can I help?'
+    setMessages([{ role: 'assistant', content: welcome }])
+    setSessionId('sess_' + Math.random().toString(36).substring(2))
+    setEscalationShown(false)
+    setShowEscalationForm(false)
+    setLastUserMessage('')
+    setEscalated(false)
+    setSalesAction(null)
+    setDetectedLang(null)
   }
 
   if (!config) {
@@ -275,6 +374,38 @@ export default function EmbedChat() {
           </div>
         )}
 
+        {showEscalationForm && !escalated && (
+          <div style={{ alignSelf: 'flex-start', maxWidth: '90%', background: '#fff', border: '1px solid #E5E7EB', borderRadius: 10, padding: '14px 16px', margin: '4px 0', boxShadow: '0 1px 2px rgba(0,0,0,0.04)' }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: '#1F2937', marginBottom: 4 }}>
+              I'll get a human to help you right now
+            </div>
+            <div style={{ fontSize: 12.5, color: '#6B7280', marginBottom: 10 }}>
+              Leave your details so they can reach you.
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <input type="text" placeholder="Name" value={contact.name}
+                onChange={e => setContact(c => ({ ...c, name: e.target.value }))}
+                style={{ border: '1px solid #E5E7EB', borderRadius: 6, padding: '7px 10px', fontSize: 13, outline: 'none' }} />
+              <input type="email" placeholder="Email" value={contact.email}
+                onChange={e => setContact(c => ({ ...c, email: e.target.value }))}
+                style={{ border: '1px solid #E5E7EB', borderRadius: 6, padding: '7px 10px', fontSize: 13, outline: 'none' }} />
+              <input type="tel" placeholder="Phone (optional)" value={contact.phone}
+                onChange={e => setContact(c => ({ ...c, phone: e.target.value }))}
+                style={{ border: '1px solid #E5E7EB', borderRadius: 6, padding: '7px 10px', fontSize: 13, outline: 'none' }} />
+              <div style={{ display: 'flex', gap: 8, marginTop: 2 }}>
+                <button onClick={handleEscalationSubmit}
+                  style={{ flex: 1, background: accent, color: '#fff', border: 'none', borderRadius: 6, padding: '8px 12px', fontSize: 13, cursor: 'pointer', fontWeight: 500 }}>
+                  Connect me
+                </button>
+                <button onClick={handleEscalationSkip}
+                  style={{ background: 'transparent', color: '#6B7280', border: '1px solid #E5E7EB', borderRadius: 6, padding: '8px 12px', fontSize: 13, cursor: 'pointer' }}>
+                  Skip
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div ref={messagesEndRef} />
       </div>
 
@@ -296,6 +427,23 @@ export default function EmbedChat() {
           <svg width="16" height="16" viewBox="0 0 24 24" fill={loading || !input.trim() ? '#9CA3AF' : '#fff'}><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
         </button>
       </form>
+
+      {!escalated && !showEscalationForm && !escalationShown && (
+        <div style={{ textAlign: 'center', padding: '4px 0 8px', background: '#fff', borderTop: '1px solid #F3F4F6', flexShrink: 0 }}>
+          <button
+            onClick={() => {
+              setEscalationShown(true)
+              setMessages(prev => [...prev,
+                { role: 'assistant', content: "Of course! Let me get someone for you right away." }
+              ])
+              setShowEscalationForm(true)
+            }}
+            style={{ background: 'transparent', border: `1px solid ${accent}`, color: accent, borderRadius: 8, padding: '5px 14px', fontSize: 12, cursor: 'pointer' }}
+          >
+            🙋 Request human support
+          </button>
+        </div>
+      )}
 
       {/* Powered by footer */}
       <div style={{ textAlign: 'center', padding: '4px 0 6px', background: '#fff', fontSize: 10, color: '#9CA3AF', borderTop: '1px solid #F3F4F6', flexShrink: 0 }}>
