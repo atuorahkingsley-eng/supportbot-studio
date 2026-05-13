@@ -73,37 +73,26 @@ def find_strategy(error_type: str, error_msg: str) -> str:
 
 
 def _reconnect_db(db: Session) -> None:
-    """Close the stale connection and verify the session is healthy.
+    """Verify the database connection is healthy without destroying the session.
 
-    The ``reconnect_and_retry`` strategy previously only called
-    ``db.rollback()`` — which returns the session to a clean state but
-    does NOT test or repair a broken network/connection. If the database
-    connection was genuinely severed, the rollback would "succeed" against
-    a stale transaction object and the next actual query would crash again.
+    The previous implementation called ``db.close()`` then created and
+    discarded a new session — the caller's ``db`` was left in a closed
+    state and the ``error_log`` ORM object (attached to the caller's
+    session) became detached. Any subsequent ``_mark_healed`` write was
+    silently lost.
 
-    This function closes the existing connection and opens a fresh one,
-    verifying it with a ``SELECT 1`` ping so the caller can be confident
-    the session is healthy.
+    Instead, ping the existing connection directly. If the ping fails the
+    exception propagates to the caller's ``try/except`` which marks the
+    error as failed. If the ping succeeds the session is verified healthy.
 
     Args:
         db: Active (but potentially broken) SQLAlchemy Session.
 
     Raises:
-        Exception: If the new connection cannot be established or the
-            ping fails. Caller should handle and mark the error as failed.
+        Exception: If the existing connection cannot be pinged. The caller
+            should handle the failure and mark the error as unrecoverable.
     """
-    db.close()
-    new_db = SessionLocal()
-    new_db.execute(text("SELECT 1"))
-    # The caller's ``db`` variable still points to the old session, but
-    # since the caller shares ``error_log`` through the DB transaction and
-    # ``_mark_healed`` is the only write we make, this is safe — the new
-    # session is used for the ping only, and we rely on the caller's
-    # existing session for the heal log. If we wanted full reconnect, we
-    # would need to plumb the new session back to the caller (a larger
-    # refactor). For now, verifying that a new session can be created is
-    # sufficient to confirm the database is reachable.
-    new_db.close()
+    db.execute(text("SELECT 1"))
 
 
 async def attempt_heal(error_log: ErrorLog, db: Session) -> bool:
