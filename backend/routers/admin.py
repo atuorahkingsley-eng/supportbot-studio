@@ -505,7 +505,7 @@ def system_health(
         "ANTHROPIC_API_KEY": bool(settings.anthropic_api_key),
         "JWT_SECRET_KEY": settings.jwt_secret_key != "dev-insecure-key-change-this-in-production",
         "TELEGRAM_BOT_TOKEN": bool(settings.telegram_bot_token),
-        "EMAILJS_SERVICE_ID": bool(settings.emailjs_service_id),
+        "ZOHO_SMTP": bool(settings.zoho_smtp_user and settings.zoho_smtp_password),
     }
 
     return {
