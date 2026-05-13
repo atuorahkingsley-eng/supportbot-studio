@@ -55,16 +55,24 @@ def _on_job_error(event) -> None:
 scheduler.add_listener(_on_job_error, EVENT_JOB_ERROR)
 
 
-def _build_report(db: Session, bot_id: str) -> str:
-    """Build the daily report text for a single tenant.
+def _build_report(db: Session, bot_id: str, frequency: str = "daily") -> str:
+    """Build the report text for a single tenant.
 
     All queries are scoped by bot_id — never read across tenants.
+    frequency controls the data window: daily = today, weekly = last 7 days.
     """
     bot_config = db.query(BotConfig).filter(BotConfig.bot_id == bot_id).first()
     business_name = bot_config.business_name if bot_config else "SupportBot"
 
     today = datetime.utcnow().date()
-    since = datetime.combine(today, datetime.min.time())
+    if frequency == "weekly":
+        since = datetime.combine(today - timedelta(days=7), datetime.min.time())
+        label = "Weekly"
+        date_range = f"{today - timedelta(days=7)} – {today}"
+    else:
+        since = datetime.combine(today, datetime.min.time())
+        label = "Daily"
+        date_range = str(today)
 
     convos = db.query(Conversation).filter(
         Conversation.bot_id == bot_id,
@@ -81,7 +89,6 @@ def _build_report(db: Session, bot_id: str) -> str:
     auto_replies = sum(1 for m in msgs if m.was_auto_reply and m.role == "assistant")
     assistant_msgs = sum(1 for m in msgs if m.role == "assistant")
     auto_pct = round(auto_replies / assistant_msgs * 100, 1) if assistant_msgs > 0 else 0
-    savings = round(auto_replies * 0.003, 2)
 
     rated = [c for c in convos if c.rating]
     avg_rating = round(sum(c.rating for c in rated) / len(rated), 2) if rated else None
@@ -100,11 +107,11 @@ def _build_report(db: Session, bot_id: str) -> str:
         top_q_text += f"{i}. {short_q} — {cnt}x\n"
 
     report = (
-        f"📊 SupportBot Daily Report — {business_name}\n"
-        f"Date: {today}\n\n"
+        f"📊 SupportBot {label} Report — {business_name}\n"
+        f"Date: {date_range}\n\n"
         f"Conversations: {total_convos}\n"
         f"Messages: {total_msgs}\n"
-        f"Auto-replies: {auto_replies} ({auto_pct}% — saved ${savings})\n"
+        f"Auto-replies: {auto_replies} ({auto_pct}%)\n"
         f"Escalations: {escalations}\n"
         f"Avg Rating: {avg_rating}/4\n\n"
         f"Top 5 Questions:\n{top_q_text}\n"
@@ -126,12 +133,20 @@ async def send_report():
             ReportSchedule.enabled == True,
         ).all()
 
+        now_utc = datetime.utcnow()
         for schedule in schedules:
             bot_id = schedule.bot_id
             if not bot_id:
                 continue
+            if schedule.send_at_hour != now_utc.hour:
+                continue
+            if schedule.frequency == "weekly":
+                # send_on_day: 0=Mon … 6=Sun, matches Python's weekday()
+                if schedule.send_on_day is None or schedule.send_on_day != now_utc.weekday():
+                    continue
             try:
-                report = _build_report(db, bot_id)
+                report_label = "Weekly" if schedule.frequency == "weekly" else "Daily"
+                report = _build_report(db, bot_id, frequency=schedule.frequency)
 
                 bot_config = db.query(BotConfig).filter(
                     BotConfig.bot_id == bot_id
@@ -146,7 +161,7 @@ async def send_report():
                     to_email = bot_config.escalation_email if bot_config else ""
                     if to_email:
                         await send_emailjs(
-                            subject=f"SupportBot Daily Report",
+                            subject=f"SupportBot {report_label} Report",
                             message=report,
                             to_email=to_email,
                         )
@@ -168,7 +183,8 @@ def start_scheduler():
     # set on the scheduler itself (see AsyncIOScheduler config above).
     scheduler.add_job(
         send_report, "cron",
-        hour=8, minute=0,
+        minute=0,          # fires at the top of every UTC hour; per-tenant
+                           # send_at_hour filtering happens inside send_report
         id="send_report", replace_existing=True,
     )
     scheduler.start()

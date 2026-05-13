@@ -164,7 +164,7 @@ export default function ReportSettings() {
         <div>Date: {new Date().toISOString().slice(0, 10)}</div>
         <div style={{ marginTop: 8 }}>Conversations: 42</div>
         <div>Messages: 187</div>
-        <div>Auto-replies: 134 (71.7% — saved $0.40)</div>
+        <div>Auto-replies: 134 (71.7%)</div>
         <div>Escalations: 3</div>
         <div>Avg Rating: 3.8/4</div>
         <div style={{ marginTop: 8 }}>Top 5 Questions:</div>
