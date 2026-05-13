@@ -236,7 +236,7 @@ export default function EmbedChat() {
     setEscalated(true)
     setShowEscalateForm(false)
     try {
-      await fetch('/api/escalate/public', {
+      const r = await fetch('/api/escalate/public', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -250,15 +250,17 @@ export default function EmbedChat() {
           reason: 'customer_requested',
         }),
       })
+      if (r.ok) {
+        setMessages(prev => [...prev, { role: 'assistant', content: 'We\'ve notified our team. Someone will get back to you shortly.' }])
+      }
     } catch { /* escalation queued fallback */ }
-    setMessages(prev => [...prev, { role: 'assistant', content: 'We\'ve notified our team. Someone will get back to you shortly.' }])
   }
 
   const handleEscalateSkip = async () => {
     setEscalated(true)
     setShowEscalateForm(false)
     try {
-      await fetch('/api/escalate/public', {
+      const r = await fetch('/api/escalate/public', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -272,6 +274,7 @@ export default function EmbedChat() {
           reason: 'customer_requested',
         }),
       })
+      if (!r.ok) return
     } catch { /* escalation queued fallback */ }
   }
 

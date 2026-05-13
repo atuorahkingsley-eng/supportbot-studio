@@ -11,7 +11,7 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from backend.database import (
     get_db, get_dialect, Conversation, Message, WebhookConfig, BotConfig, Tenant,
-    PendingEscalation, ErrorLog, Lead,
+    PendingEscalation, ErrorLog, Lead, VisitorConversation,
 )
 from backend.services.telegram_notify import send_telegram_message
 from backend.services.email_notify import send_emailjs
@@ -77,22 +77,23 @@ def _resolve_contact(
     db: Session,
     bot_id: str,
     convo: Conversation,
-    name: Optional[str],
-    email: Optional[str],
-    phone: Optional[str],
+    visitor_id: Optional[str] = None,
+    name: Optional[str] = None,
+    email: Optional[str] = None,
+    phone: Optional[str] = None,
 ) -> dict[str, Optional[str]]:
-    """Merge contact details supplied on this request with the visitor's history.
+    """Resolve contact details for an escalation.
 
-    Priority for each field: explicit request value → most recent prior Lead
-    captured in this visitor's session (lead-capture form filled earlier in
-    the same chat) → ``Conversation.customer_email`` (legacy column, email
-    only). Returns the dict ready to drop into the webhook ``contact`` block.
+    Merges explicit request fields with prior Lead data from the
+    same visitor. Priority: explicit args > prior Lead > conversation
+    ``customer_email``.
 
     Args:
         db: Active SQLAlchemy session.
         bot_id: Tenant identifier; used to scope the Lead lookup.
-        convo: Current conversation — provides visitor_id and legacy
-            customer_email fallback.
+        convo: Current conversation — provides legacy ``customer_email`` fallback.
+        visitor_id: Resolved visitor identifier from the join table. If provided,
+            used to look up prior Lead data for contact prefill.
         name: Contact name supplied on the escalate request, if any.
         email: Contact email supplied on the escalate request, if any.
         phone: Contact phone supplied on the escalate request, if any.
@@ -103,10 +104,10 @@ def _resolve_contact(
         shape stability.
     """
     prior: Optional[Lead] = None
-    if convo.visitor_id:
+    if visitor_id:
         prior = (
             db.query(Lead)
-            .filter(Lead.bot_id == bot_id, Lead.visitor_id == convo.visitor_id)
+            .filter(Lead.bot_id == bot_id, Lead.visitor_id == visitor_id)
             .order_by(Lead.created_at.desc())
             .first()
         )
@@ -190,8 +191,16 @@ async def _do_escalate(
     # email arg wins, falling back to legacy customer_email; ``customer_email``
     # in the request body remains supported but is treated as email-only input.
     effective_email = email or customer_email
+
+    # Conversation has no visitor_id column — look it up via the join table.
+    visitor_link = db.query(VisitorConversation).filter(
+        VisitorConversation.conversation_id == convo.id,
+    ).first()
+    convo_visitor_id = visitor_link.visitor_id if visitor_link else None
+
     contact = _resolve_contact(
         db=db, bot_id=bot_id, convo=convo,
+        visitor_id=convo_visitor_id,
         name=name, email=effective_email, phone=phone,
     )
     normalised_reason = reason if reason in _VALID_REASONS else "customer_requested"
@@ -272,7 +281,7 @@ async def _do_escalate(
     ).all()
 
     webhook_extra: dict[str, Any] = {
-        "visitor_id": convo.visitor_id,
+        "visitor_id": convo_visitor_id,
         "bot_name": business_name,
         "reason": normalised_reason,
         "message_count": len(messages),

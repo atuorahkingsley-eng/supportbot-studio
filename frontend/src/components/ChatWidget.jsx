@@ -477,13 +477,16 @@ export default function ChatWidget({ config, botId }) {
   const handleEscalateSubmit = async (fields) => {
     setShowEscalateForm(false)
     setEscalated(true)
+    if (!sessionId) {
+      addToast('Unable to escalate — please try again in a moment.', 'error')
+      return
+    }
     setMessages(prev => [...prev, {
       role: 'assistant',
       content: 'Thanks! A team member will be in touch shortly.',
       auto: false,
     }])
     addToast('Escalation sent — a human will reach out soon!', 'success')
-    if (!sessionId) return
     try {
       await fetch('/api/escalate', {
         method: 'POST',
@@ -508,12 +511,12 @@ export default function ChatWidget({ config, botId }) {
   const handleEscalateSkip = () => {
     setShowEscalateForm(false)
     setEscalated(true)
+    if (!sessionId) return
     setMessages(prev => [...prev, {
       role: 'assistant',
       content: 'No problem — feel free to keep chatting and a team member will join when available.',
       auto: false,
     }])
-    if (!sessionId) return
     // Fire the escalation anyway so the team is aware; contact fields blank
     // means the agent will need to follow up inside the chat.
     fetch('/api/escalate', {
