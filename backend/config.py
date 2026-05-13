@@ -23,6 +23,12 @@ class Settings(BaseSettings):
     emailjs_public_key: str = ""
     emailjs_private_key: str = ""
 
+    # Zoho SMTP for escalation email delivery
+    zoho_smtp_user: str = ""
+    zoho_smtp_password: str = ""
+    zoho_smtp_host: str = "smtp.zoho.com"
+    zoho_smtp_port: int = 465
+
     twilio_account_sid: str = ""
     twilio_auth_token: str = ""
     twilio_whatsapp_from: str = ""

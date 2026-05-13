@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from backend.database import SessionLocal, ReportSchedule, Conversation, Message, BotConfig, ErrorLog
 from backend.services.telegram_notify import send_telegram_message
-from backend.services.email_notify import send_emailjs
+from backend.services.email_notify import send_escalation_email
 
 
 # ── Scheduler configuration ───────────────────────────────────────────────────
@@ -160,10 +160,11 @@ async def send_report():
                 if schedule.send_via in ("email", "both"):
                     to_email = bot_config.escalation_email if bot_config else ""
                     if to_email:
-                        await send_emailjs(
-                            subject=f"SupportBot {report_label} Report",
-                            message=report,
+                        await send_escalation_email(
                             to_email=to_email,
+                            bot_name=bot_config.business_name if bot_config else "SupportBot Studio",
+                            visitor_message=f"{report_label} Report\n\n{report}",
+                            session_id="",
                         )
 
                 schedule.last_sent_at = datetime.utcnow()

@@ -14,7 +14,7 @@ from backend.database import (
     PendingEscalation, ErrorLog, Lead, VisitorConversation,
 )
 from backend.services.telegram_notify import send_telegram_message
-from backend.services.email_notify import send_emailjs
+from backend.services.email_notify import send_escalation_email
 from backend.services.webhook_sender import dispatch_webhook
 from backend.services.auth import get_current_client
 from backend.services.rate_limit import limiter, check_bot_id_rate_limit
@@ -281,10 +281,14 @@ async def _do_escalate(
     # ── Email (try independently) ──────────────────────────────────────────────
     if bot_config and getattr(bot_config, "escalation_email", None):
         try:
-            email_ok = await send_emailjs(
-                subject=f"Support Escalation — {business_name}",
-                message=summary,
+            email_ok = await send_escalation_email(
                 to_email=bot_config.escalation_email,
+                bot_name=business_name,
+                visitor_message=first_user_msg or "No message captured",
+                session_id=session_id,
+                contact_name=contact.get("name"),
+                contact_email=contact.get("email"),
+                contact_phone=contact.get("phone"),
             )
             results["email"] = email_ok
         except Exception as e:
