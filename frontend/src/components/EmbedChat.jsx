@@ -1,18 +1,8 @@
-/**
- * EmbedChat — Renders inside the widget.js iframe.
- * Route: /embed/:botId
- * Uses public endpoints: /api/config/public/:botId and /api/chat/public
- * No authentication required.
- */
 import React, { useState, useEffect, useRef } from 'react'
 import { useParams } from 'react-router-dom'
 
 const LANG_NAMES = { en: '🇬🇧', es: '🇪🇸', fr: '🇫🇷', de: '🇩🇪', pt: '🇧🇷', ar: '🇸🇦', zh: '🇨🇳', ja: '🇯🇵', ko: '🇰🇷', hi: '🇮🇳', sw: '🇰🇪', nl: '🇳🇱', it: '🇮🇹', ru: '🇷🇺' }
 
-<<<<<<< HEAD
-// Must match ChatWidget.jsx exactly
-=======
->>>>>>> 2c222c975f68bd1a257a9d3eae0f3433363f10cb
 const ESCALATION_PHRASES = [
   'speak to a human',
   'talk to a person',
@@ -25,24 +15,13 @@ const ESCALATION_PHRASES = [
   'live agent',
   'support team',
   'talk to support',
-<<<<<<< HEAD
-];
-
-function detectEscalationIntent(text) {
-  const lower = text.toLowerCase().trim();
-  return ESCALATION_PHRASES.some(phrase =>
-    lower.includes(phrase)
-  );
-=======
 ]
 
 function detectEscalationIntent(text) {
   const lower = text.toLowerCase().trim()
   return ESCALATION_PHRASES.some(phrase => lower.includes(phrase))
->>>>>>> 2c222c975f68bd1a257a9d3eae0f3433363f10cb
 }
 
-// Cookie helpers
 function getCookie(name) {
   const m = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'))
   return m ? m[2] : null
@@ -74,7 +53,6 @@ export default function EmbedChat() {
   const [leadEmail, setLeadEmail] = useState('')
   const [leadCapturing, setLeadCapturing] = useState(false)
   const [escalated, setEscalated] = useState(false)
-  const [escalateFormShown, setEscalateFormShown] = useState(false)
   const [showEscalateForm, setShowEscalateForm] = useState(false)
   const [escalationShown, setEscalationShown] = useState(false)
   const [lastUserMessage, setLastUserMessage] = useState('')
@@ -88,40 +66,28 @@ export default function EmbedChat() {
   const messagesEndRef = useRef(null)
   const recognitionRef = useRef(null)
   const silenceTimerRef = useRef(null)
-  const escalationShownRef = useRef(false)
-  const escalatedRef = useRef(false)
-  const [showEscalationForm, setShowEscalationForm] = useState(false)
-  const [escalationShown, setEscalationShown] = useState(false)
-  const [escalated, setEscalated] = useState(false)
-  const [contact, setContact] = useState({ name: '', email: '', phone: '' })
-  const [lastUserMessage, setLastUserMessage] = useState('')
 
   const browserLang = navigator.language?.split('-')[0] || 'en'
 
-  // Load public config
   useEffect(() => {
     fetch(`/api/config/public/${botId}`)
       .then(r => r.json())
       .then(cfg => {
         setConfig(cfg)
-        // Apply brand color to iframe body
         document.documentElement.style.setProperty('--embed-accent', cfg.brand_color || '#6366F1')
       })
       .catch(() => {})
   }, [botId])
 
-  // Voice setup
   useEffect(() => {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition
     if (SR) setVoiceAvailable(true)
   }, [])
 
-  // Auto-scroll
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  // Send welcome message after config loads
   useEffect(() => {
     if (config && messages.length === 0) {
       const welcome = config.welcome_message || 'Hi! How can I help?'
@@ -134,7 +100,6 @@ export default function EmbedChat() {
     const userMsg = text.trim()
     setInput('')
 
-    // Phrase detection — show escalation form immediately, skip chat endpoint
     if (detectEscalationIntent(userMsg) && !escalationShown) {
       setEscalationShown(true)
       setLastUserMessage(userMsg)
@@ -147,18 +112,6 @@ export default function EmbedChat() {
     setMessages(prev => [...prev, { role: 'user', content: userMsg }])
     setLoading(true)
     setSalesAction(null)
-    setLastUserMessage(userMsg)
-
-    if (detectEscalationIntent(userMsg) && !escalationShownRef.current) {
-      setMessages(prev => [...prev,
-        { role: 'assistant', content: "Of course! Please leave your contact details below and a team member will reach out to you via email or phone." }
-      ])
-      escalationShownRef.current = true
-      setEscalationShown(true)
-      setShowEscalationForm(true)
-      setLoading(false)
-      return
-    }
 
     try {
       const r = await fetch('/api/chat/public', {
@@ -178,19 +131,12 @@ export default function EmbedChat() {
       if (data.is_returning) setIsReturning(true)
       if (data.detected_language) setDetectedLang(data.detected_language)
       if (data.sales_action) setSalesAction(data.sales_action)
-      if (data.needs_escalation && !escalatedRef.current && !escalationShownRef.current) {
-        escalationShownRef.current = true
+
+      if (data.needs_escalation && !escalated && !escalationShown) {
         setEscalationShown(true)
-        setTimeout(() => setShowEscalationForm(true), 800)
+        setShowEscalateForm(true)
       }
 
-      if (data.needs_escalation && !escalated && !escalateFormShown && !escalationShown) {
-        setEscalationShown(true)
-        setEscalateFormShown(true)
-        setTimeout(() => setShowEscalateForm(true), 800)
-      }
-
-      // Notify parent to show badge if widget is closed
       if (window.parent !== window) {
         window.parent.postMessage('supportbot:notify', '*')
       }
@@ -266,24 +212,12 @@ export default function EmbedChat() {
     finally { setLeadCapturing(false) }
   }
 
-<<<<<<< HEAD
   const handleEscalateSubmit = async (e) => {
     e.preventDefault()
     setEscalated(true)
     setShowEscalateForm(false)
     try {
       const r = await fetch('/api/escalate/public', {
-=======
-  const handleEscalationSubmit = async () => {
-    setShowEscalationForm(false)
-    escalatedRef.current = true
-    setEscalated(true)
-    setMessages(prev => [...prev,
-      { role: 'assistant', content: 'Thanks! A team member will reach out to you via email or phone shortly.' }
-    ])
-    try {
-      await fetch('/api/escalate/public', {
->>>>>>> 2c222c975f68bd1a257a9d3eae0f3433363f10cb
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -291,7 +225,6 @@ export default function EmbedChat() {
           session_id: sessionId,
           visitor_id: visitorId,
           message: lastUserMessage,
-<<<<<<< HEAD
           name: escName || null,
           email: escEmail || null,
           phone: escPhone || null,
@@ -309,26 +242,6 @@ export default function EmbedChat() {
     setShowEscalateForm(false)
     try {
       const r = await fetch('/api/escalate/public', {
-=======
-          name: contact.name || null,
-          email: contact.email || null,
-          phone: contact.phone || null,
-          reason: 'customer_requested',
-        }),
-      })
-    } catch { /* silently fail — backend PendingEscalation handles retry */ }
-  }
-
-  const handleEscalationSkip = async () => {
-    setShowEscalationForm(false)
-    escalatedRef.current = true
-    setEscalated(true)
-    setMessages(prev => [...prev,
-      { role: 'assistant', content: 'No problem — feel free to keep chatting and a team member will join when available.' }
-    ])
-    try {
-      await fetch('/api/escalate/public', {
->>>>>>> 2c222c975f68bd1a257a9d3eae0f3433363f10cb
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -342,26 +255,8 @@ export default function EmbedChat() {
           reason: 'customer_requested',
         }),
       })
-<<<<<<< HEAD
       if (!r.ok) return
     } catch { /* escalation queued fallback */ }
-=======
-    } catch { /* silently fail */ }
-  }
-
-  const resetChat = () => {
-    const welcome = config?.welcome_message || 'Hi! How can I help?'
-    setMessages([{ role: 'assistant', content: welcome }])
-    setSessionId('sess_' + Math.random().toString(36).substring(2))
-    setEscalationShown(false)
-    escalationShownRef.current = false
-    setShowEscalationForm(false)
-    setLastUserMessage('')
-    setEscalated(false)
-    escalatedRef.current = false
-    setSalesAction(null)
-    setDetectedLang(null)
->>>>>>> 2c222c975f68bd1a257a9d3eae0f3433363f10cb
   }
 
   if (!config) {
@@ -381,7 +276,6 @@ export default function EmbedChat() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif', background: '#F9FAFB', '--accent': accent }}>
-      {/* Header */}
       <div style={{ background: accent, color: '#fff', padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
         <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16 }}>🤖</div>
         <div style={{ flex: 1 }}>
@@ -397,7 +291,6 @@ export default function EmbedChat() {
         </div>
       </div>
 
-      {/* Messages */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '16px 12px', display: 'flex', flexDirection: 'column', gap: 10 }}>
         {messages.map((msg, i) => (
           <div key={i} style={{ display: 'flex', justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
@@ -450,7 +343,6 @@ export default function EmbedChat() {
           </div>
         )}
 
-        {/* Sales Action Cards */}
         {salesAction && (
           <div style={{ margin: '4px 0' }}>
             {salesAction.type === 'discount' && (
@@ -481,42 +373,9 @@ export default function EmbedChat() {
           </div>
         )}
 
-        {showEscalationForm && !escalated && (
-          <div style={{ alignSelf: 'flex-start', maxWidth: '90%', background: '#fff', border: '1px solid #E5E7EB', borderRadius: 10, padding: '14px 16px', margin: '4px 0', boxShadow: '0 1px 2px rgba(0,0,0,0.04)' }}>
-            <div style={{ fontSize: 14, fontWeight: 600, color: '#1F2937', marginBottom: 4 }}>
-              I'll get a human to help you right now
-            </div>
-            <div style={{ fontSize: 12.5, color: '#6B7280', marginBottom: 10 }}>
-              A team member will reach out via email or phone — just leave your details below.
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <input type="text" placeholder="Name" value={contact.name}
-                onChange={e => setContact(c => ({ ...c, name: e.target.value }))}
-                style={{ border: '1px solid #E5E7EB', borderRadius: 6, padding: '7px 10px', fontSize: 13, outline: 'none' }} />
-              <input type="email" placeholder="Email" value={contact.email}
-                onChange={e => setContact(c => ({ ...c, email: e.target.value }))}
-                style={{ border: '1px solid #E5E7EB', borderRadius: 6, padding: '7px 10px', fontSize: 13, outline: 'none' }} />
-              <input type="tel" placeholder="Phone (optional)" value={contact.phone}
-                onChange={e => setContact(c => ({ ...c, phone: e.target.value }))}
-                style={{ border: '1px solid #E5E7EB', borderRadius: 6, padding: '7px 10px', fontSize: 13, outline: 'none' }} />
-              <div style={{ display: 'flex', gap: 8, marginTop: 2 }}>
-                <button onClick={handleEscalationSubmit}
-                  style={{ flex: 1, background: accent, color: '#fff', border: 'none', borderRadius: 6, padding: '8px 12px', fontSize: 13, cursor: 'pointer', fontWeight: 500 }}>
-                  Connect me
-                </button>
-                <button onClick={handleEscalationSkip}
-                  style={{ background: 'transparent', color: '#6B7280', border: '1px solid #E5E7EB', borderRadius: 6, padding: '8px 12px', fontSize: 13, cursor: 'pointer' }}>
-                  Skip
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input */}
       <form onSubmit={handleSubmit} style={{ padding: '10px 12px', background: '#fff', borderTop: '1px solid #E5E7EB', display: 'flex', gap: 8, flexShrink: 0 }}>
         <input
           value={input}
@@ -535,7 +394,6 @@ export default function EmbedChat() {
         </button>
       </form>
 
-      {/* Powered by footer */}
       <div style={{ textAlign: 'center', padding: '4px 0 6px', background: '#fff', fontSize: 10, color: '#9CA3AF', borderTop: '1px solid #F3F4F6', flexShrink: 0 }}>
         Powered by <strong>SupportBot</strong>
       </div>
