@@ -115,7 +115,7 @@ export default function EmbedChat() {
 
     if (detectEscalationIntent(userMsg) && !escalationShown) {
       setMessages(prev => [...prev,
-        { role: 'assistant', content: "Of course! Let me get someone for you right away." }
+        { role: 'assistant', content: "Of course! Please leave your contact details below and a team member will reach out to you via email or phone." }
       ])
       setEscalationShown(true)
       setShowEscalationForm(true)
@@ -226,7 +226,7 @@ export default function EmbedChat() {
     setShowEscalationForm(false)
     setEscalated(true)
     setMessages(prev => [...prev,
-      { role: 'assistant', content: 'Thanks! A team member will be in touch shortly.' }
+      { role: 'assistant', content: 'Thanks! A team member will reach out to you via email or phone shortly.' }
     ])
     try {
       await fetch('/api/escalate/public', {
@@ -380,7 +380,7 @@ export default function EmbedChat() {
               I'll get a human to help you right now
             </div>
             <div style={{ fontSize: 12.5, color: '#6B7280', marginBottom: 10 }}>
-              Leave your details so they can reach you.
+              A team member will reach out via email or phone — just leave your details below.
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <input type="text" placeholder="Name" value={contact.name}
@@ -427,23 +427,6 @@ export default function EmbedChat() {
           <svg width="16" height="16" viewBox="0 0 24 24" fill={loading || !input.trim() ? '#9CA3AF' : '#fff'}><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
         </button>
       </form>
-
-      {!escalated && !showEscalationForm && !escalationShown && (
-        <div style={{ textAlign: 'center', padding: '4px 0 8px', background: '#fff', borderTop: '1px solid #F3F4F6', flexShrink: 0 }}>
-          <button
-            onClick={() => {
-              setEscalationShown(true)
-              setMessages(prev => [...prev,
-                { role: 'assistant', content: "Of course! Let me get someone for you right away." }
-              ])
-              setShowEscalationForm(true)
-            }}
-            style={{ background: 'transparent', border: `1px solid ${accent}`, color: accent, borderRadius: 8, padding: '5px 14px', fontSize: 12, cursor: 'pointer' }}
-          >
-            🙋 Request human support
-          </button>
-        </div>
-      )}
 
       {/* Powered by footer */}
       <div style={{ textAlign: 'center', padding: '4px 0 6px', background: '#fff', fontSize: 10, color: '#9CA3AF', borderTop: '1px solid #F3F4F6', flexShrink: 0 }}>
