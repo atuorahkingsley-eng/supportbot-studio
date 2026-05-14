@@ -5,7 +5,7 @@ Diagnoses errors and applies fixes automatically. Uses Claude for unknown errors
 import asyncio
 import json
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 
 import anthropic
 import structlog
@@ -208,7 +208,7 @@ def _mark_healed(error_log: ErrorLog, db: Session, action: str):
     error_log.auto_healed = True
     error_log.heal_action = action
     error_log.status = "healed"
-    error_log.resolved_at = datetime.utcnow()
+    error_log.resolved_at = datetime.now(timezone.utc)
     db.commit()
 
 

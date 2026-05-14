@@ -3,7 +3,7 @@ Scheduled health monitor (Phase 5).
 Runs every N minutes via APScheduler. Alerts via Telegram if anything is wrong.
 """
 import shutil
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import httpx
 
@@ -76,7 +76,7 @@ async def scheduled_health_check():
     try:
         db = SessionLocal()
         try:
-            one_hour_ago = datetime.utcnow() - timedelta(hours=1)
+            one_hour_ago = datetime.now(timezone.utc) - timedelta(hours=1)
             recent_failed = db.query(ErrorLog).filter(
                 ErrorLog.created_at > one_hour_ago,
                 ErrorLog.status == "failed",
@@ -95,5 +95,5 @@ async def scheduled_health_check():
         await send_telegram_alert(
             f"Health Check Warning\n\n"
             f"Issues found:\n{issues}\n\n"
-            f"Time: {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}"
+            f"Time: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}"
         )

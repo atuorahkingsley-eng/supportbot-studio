@@ -5,7 +5,7 @@ FastAPI dependency functions use lazy Tenant imports via the db session.
 """
 import re
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from jose import jwt, JWTError
@@ -59,7 +59,7 @@ def create_token(data: dict, expires_hours: int = TOKEN_EXPIRE_HOURS) -> str:
     early revocation on logout. Existing payload keys (role, bot_id,
     username, …) are preserved verbatim.
     """
-    expire = datetime.utcnow() + timedelta(hours=expires_hours)
+    expire = datetime.now(timezone.utc) + timedelta(hours=expires_hours)
     payload = {**data, "exp": expire, "jti": uuid.uuid4().hex}
     return jwt.encode(payload, settings.jwt_secret_key, algorithm=ALGORITHM)
 

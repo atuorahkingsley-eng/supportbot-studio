@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
@@ -247,7 +247,7 @@ async def _do_escalate(
         f"{contact_block}\n"
         f"Reason: {normalised_reason}\n"
         f"Messages: {len(messages)}\n"
-        f"Time: {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}\n\n"
+        f"Time: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}\n\n"
         f"Transcript:\n{transcript}"
     )
 
@@ -361,7 +361,7 @@ async def _do_escalate(
             stmt = pg_insert(PendingEscalation).values(
                 bot_id=bot_id, session_id=session_id,
                 customer_email=contact["email"],
-                retry_after=datetime.utcnow() + timedelta(minutes=5),
+                retry_after=datetime.now(timezone.utc) + timedelta(minutes=5),
             ).on_conflict_do_nothing(
                 index_elements=["bot_id", "session_id"]
             )
@@ -369,7 +369,7 @@ async def _do_escalate(
             stmt = sqlite_insert(PendingEscalation).values(
                 bot_id=bot_id, session_id=session_id,
                 customer_email=contact["email"],
-                retry_after=datetime.utcnow() + timedelta(minutes=5),
+                retry_after=datetime.now(timezone.utc) + timedelta(minutes=5),
             ).on_conflict_do_nothing(
                 index_elements=["bot_id", "session_id"]
             )

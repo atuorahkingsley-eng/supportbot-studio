@@ -11,7 +11,7 @@ paid Claude API request and tenants only need to run this when the
 samples actually change.
 """
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional
 
 import structlog
@@ -108,7 +108,7 @@ async def analyze(
         row.personality_traits = traits_json
         row.avoid = profile["avoid"]
         row.raw_samples = profile["raw_samples"]
-        row.generated_at = datetime.utcnow()
+        row.generated_at = datetime.now(timezone.utc)
         # Re-analysis preserves is_active — tenant doesn't have to re-toggle.
     else:
         row = BrandVoice(
@@ -119,7 +119,7 @@ async def analyze(
             avoid=profile["avoid"],
             raw_samples=profile["raw_samples"],
             is_active=False,  # opt-in after review
-            generated_at=datetime.utcnow(),
+            generated_at=datetime.now(timezone.utc),
         )
         db.add(row)
 

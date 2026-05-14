@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import io
 import math
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Literal, Optional
 
 import structlog
@@ -179,7 +179,7 @@ def _apply_filters(
     if range_filter and range_filter != "all":
         delta = _RANGE_DELTAS.get(range_filter)
         if delta is not None:
-            q = q.filter(Lead.created_at >= datetime.utcnow() - delta)
+            q = q.filter(Lead.created_at >= datetime.now(timezone.utc) - delta)
     return q
 
 
@@ -266,7 +266,7 @@ def lead_summary(
     * ``escalations_this_month`` — type=escalation rows in the last 30 days
     """
     bid = tenant.bot_id
-    month_ago = datetime.utcnow() - timedelta(days=30)
+    month_ago = datetime.now(timezone.utc) - timedelta(days=30)
 
     total_all_time = db.query(func.count(Lead.id)).filter(Lead.bot_id == bid).scalar() or 0
     total_this_month = (
@@ -358,7 +358,7 @@ def export_leads(
 
     rows = q.all()
 
-    filename = f"leads-{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}.csv"
+    filename = f"leads-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}.csv"
 
     def _lead_csv_generator(leads: list):
         import csv, io

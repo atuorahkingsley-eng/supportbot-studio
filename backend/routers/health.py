@@ -3,7 +3,7 @@ Comprehensive health check endpoint (Phase 2).
 Checks: database, Anthropic API, Telegram, disk space, error rate, tenants.
 """
 import shutil
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import httpx
 import structlog
@@ -107,7 +107,7 @@ async def health_check(db: Session = Depends(get_db)):
     recent_errors = 0
     failed_errors = 0
     try:
-        one_hour_ago = datetime.utcnow() - timedelta(hours=1)
+        one_hour_ago = datetime.now(timezone.utc) - timedelta(hours=1)
         recent_errors = db.query(ErrorLog).filter(ErrorLog.created_at > one_hour_ago).count()
         failed_errors = db.query(ErrorLog).filter(
             ErrorLog.created_at > one_hour_ago,
@@ -151,5 +151,5 @@ async def health_check(db: Session = Depends(get_db)):
         "auto_reply_ready": checks.get("database", {}).get("faq_count", 0) > 0,
         "faq_count": checks.get("database", {}).get("faq_count", 0),
         "tenant_count": checks.get("database", {}).get("tenant_count", 0),
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     }

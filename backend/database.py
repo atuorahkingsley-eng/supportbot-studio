@@ -1,6 +1,6 @@
 import os
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./supportbot.db")
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import (
     create_engine, Column, Integer, String, Boolean, DateTime, Float,
     ForeignKey, Text, text, Date, UniqueConstraint, event,
@@ -88,7 +88,7 @@ class Tenant(Base):
     monthly_message_limit = Column(Integer, default=1000)
     messages_used_this_month = Column(Integer, default=0)
 
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     last_login_at = Column(DateTime, nullable=True)
 
 
@@ -98,7 +98,7 @@ class SuperAdmin(Base):
     id = Column(Integer, primary_key=True)
     username = Column(String, unique=True, nullable=False)
     password_hash = Column(String, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
 class RevokedToken(Base):
@@ -113,7 +113,7 @@ class RevokedToken(Base):
 
     id = Column(Integer, primary_key=True)
     jti = Column(String, unique=True, nullable=False, index=True)
-    revoked_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    revoked_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
 
 class UsageLog(Base):
@@ -205,8 +205,8 @@ class BotConfig(Base):
     # bot first — Telegram's restriction, not ours). Sent IN ADDITION TO the
     # platform-wide TELEGRAM_CHAT_ID, never instead of it.
     telegram_handle = Column(String, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
 
 class FAQEntry(Base):
@@ -219,7 +219,7 @@ class FAQEntry(Base):
     source = Column(String, default="manual")
     source_filename = Column(String, nullable=True)
     embedding_text = Column(Text)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
 class Conversation(Base):
@@ -228,7 +228,7 @@ class Conversation(Base):
     id = Column(Integer, primary_key=True, index=True)
     bot_id = Column(String, nullable=True, index=True, default="default")
     session_id = Column(String, unique=True, index=True, nullable=False)
-    started_at = Column(DateTime, default=datetime.utcnow)
+    started_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     ended_at = Column(DateTime, nullable=True)
     escalated = Column(Boolean, default=False)
     customer_email = Column(String, nullable=True)
@@ -250,7 +250,7 @@ class Message(Base):
     was_auto_reply = Column(Boolean, default=False)
     detected_language = Column(String, nullable=True)
     input_method = Column(String, default="text")
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     conversation = relationship("Conversation", back_populates="messages")
 
@@ -272,7 +272,7 @@ class WebhookConfig(Base):
     # e.g. '["escalation","lead.captured"]'. NULL = receive all events
     # matching notify_on (legacy behaviour).
     events = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
 class ReportSchedule(Base):
@@ -297,8 +297,8 @@ class Visitor(Base):
     bot_id = Column(String, nullable=True, index=True, default="default")
     visitor_id = Column(String, index=True, nullable=False)
     email = Column(String, nullable=True, index=True)
-    first_seen = Column(DateTime, default=datetime.utcnow)
-    last_seen = Column(DateTime, default=datetime.utcnow)
+    first_seen = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    last_seen = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     visit_count = Column(Integer, default=1)
     name = Column(String, nullable=True)
     tags = Column(Text, default="[]")
@@ -351,7 +351,7 @@ class Lead(Base):
     source = Column(String, default="chat_capture")
     buying_signal_score = Column(Integer, default=1)
     conversation_id = Column(Integer, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     followed_up = Column(Boolean, default=False)
     # Unified Lead/Escalation model: type distinguishes buying-intent captures
     # ("lead") from human-support requests ("escalation"). status drives the
@@ -391,8 +391,8 @@ class BrandVoice(Base):
     # explicitly opts in after reviewing the extracted profile.
     is_active = Column(Boolean, default=False, nullable=False)
 
-    generated_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    generated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     __table_args__ = (
         UniqueConstraint("bot_id", name="uq_brand_voice_bot"),
@@ -425,7 +425,7 @@ class ErrorLog(Base):
     status = Column(String, default="new")
     notified = Column(Boolean, default=False)
 
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     resolved_at = Column(DateTime, nullable=True)
 
 
@@ -439,7 +439,7 @@ class PendingEscalation(Base):
     customer_email = Column(String, nullable=True)
     retry_count = Column(Integer, default=0)
     retry_after = Column(DateTime, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     __table_args__ = (
         UniqueConstraint("bot_id", "session_id", name="uq_pending_esc_bot_session"),

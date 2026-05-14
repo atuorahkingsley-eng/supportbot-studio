@@ -149,14 +149,14 @@ async def _retry_pending_escalations():
     (no asyncio.run, no thread hop). Each pending escalation gets its own DB
     session so a mid-transaction failure can't corrupt the next iteration.
     """
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, timezone
     from backend.database import PendingEscalation
     from backend.routers.escalate import _do_escalate
 
     # Read the pending list with a short-lived session, then close.
     read_db = SessionLocal()
     try:
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         pending = read_db.query(PendingEscalation).filter(
             PendingEscalation.retry_after <= now,
             PendingEscalation.retry_count < 3,
@@ -187,7 +187,7 @@ async def _retry_pending_escalations():
             p = db.query(PendingEscalation).filter(PendingEscalation.id == pid).first()
             if p:
                 p.retry_count += 1
-                p.retry_after = datetime.utcnow() + timedelta(minutes=15)
+                p.retry_after = datetime.now(timezone.utc) + timedelta(minutes=15)
                 db.commit()
         finally:
             db.close()

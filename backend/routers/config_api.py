@@ -1,5 +1,5 @@
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, field_validator
@@ -126,7 +126,7 @@ def update_config(
     if data.telegram_handle is not None:
         # "" -> NULL so empty form input clears the override cleanly.
         config.telegram_handle = data.telegram_handle or None
-    config.updated_at = datetime.utcnow()
+    config.updated_at = datetime.now(timezone.utc)
 
     db.commit()
     db.refresh(config)

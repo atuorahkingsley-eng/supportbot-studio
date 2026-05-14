@@ -3,7 +3,7 @@ Auth endpoints: login, logout, me.
 Two auth systems: super admin (/api/auth/super/login) and client (/api/auth/login).
 """
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Response, Request
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
@@ -128,7 +128,7 @@ def client_login(request: Request, data: ClientLoginRequest, response: Response,
     if not tenant.is_active:
         raise HTTPException(status_code=403, detail="Account is inactive")
 
-    tenant.last_login_at = datetime.utcnow()
+    tenant.last_login_at = datetime.now(timezone.utc)
     db.commit()
 
     token = create_token({"role": "client", "bot_id": tenant.bot_id})
@@ -164,7 +164,7 @@ def logout(request: Request, response: Response, db: Session = Depends(get_db)):
     """
     from backend.database import RevokedToken  # lazy import — mirrors auth.py
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     for cookie_name in ("sb_client_token", "sb_super_token"):
         token = request.cookies.get(cookie_name)
         if not token:

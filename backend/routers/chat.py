@@ -1,6 +1,6 @@
 import json
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Request
 from sqlalchemy import update
 from sqlalchemy.orm import Session
@@ -101,7 +101,7 @@ def _get_or_create_visitor(visitor_id: str, bot_id: str, db: Session) -> Visitor
     ).first()
     if visitor:
         visitor.visit_count += 1
-        visitor.last_seen = datetime.utcnow()
+        visitor.last_seen = datetime.now(timezone.utc)
         db.commit()
         return visitor
     # First-seen: try insert. Concurrent first messages from the same
@@ -124,7 +124,7 @@ def _get_or_create_visitor(visitor_id: str, bot_id: str, db: Session) -> Visitor
             # Unreachable in practice — UNIQUE conflict means a row exists.
             raise
         visitor.visit_count += 1
-        visitor.last_seen = datetime.utcnow()
+        visitor.last_seen = datetime.now(timezone.utc)
         db.commit()
     return visitor
 
@@ -674,7 +674,7 @@ async def rate_conversation(
     # Save the rating regardless of quota — it's a single column write, not a
     # Claude call. Quota only gates the (paid) summary task below.
     convo.rating = data.rating
-    convo.ended_at = datetime.utcnow()
+    convo.ended_at = datetime.now(timezone.utc)
     db.commit()
 
     # Fire conversation_ended webhooks.

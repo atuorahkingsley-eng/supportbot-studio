@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.events import EVENT_JOB_ERROR
 from sqlalchemy.orm import Session
@@ -64,7 +64,7 @@ def _build_report(db: Session, bot_id: str, frequency: str = "daily") -> str:
     bot_config = db.query(BotConfig).filter(BotConfig.bot_id == bot_id).first()
     business_name = bot_config.business_name if bot_config else "SupportBot"
 
-    today = datetime.utcnow().date()
+    today = datetime.now(timezone.utc).date()
     if frequency == "weekly":
         since = datetime.combine(today - timedelta(days=7), datetime.min.time())
         label = "Weekly"
@@ -133,7 +133,7 @@ async def send_report():
             ReportSchedule.enabled == True,
         ).all()
 
-        now_utc = datetime.utcnow()
+        now_utc = datetime.now(timezone.utc)
         for schedule in schedules:
             bot_id = schedule.bot_id
             if not bot_id:
@@ -167,7 +167,7 @@ async def send_report():
                             session_id="",
                         )
 
-                schedule.last_sent_at = datetime.utcnow()
+                schedule.last_sent_at = datetime.now(timezone.utc)
                 db.commit()
             except Exception:
                 # Per-tenant isolation: one tenant's failure must not abort the

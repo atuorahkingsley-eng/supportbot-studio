@@ -9,7 +9,7 @@ Login / role-mismatch tests live here too — same auth surface, same file
 the test spec asked for.
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from jose import jwt
@@ -50,7 +50,7 @@ def test_expired_token_returns_401(test_client, test_tenant):
         {
             "role": "client",
             "bot_id": test_tenant.bot_id,
-            "exp": datetime.utcnow() - timedelta(hours=1),
+            "exp": datetime.now(timezone.utc) - timedelta(hours=1),
             "jti": "expired-jti-12345",
         },
         settings.jwt_secret_key,

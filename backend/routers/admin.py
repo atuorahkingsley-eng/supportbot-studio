@@ -3,7 +3,7 @@ Super Admin router — tenant CRUD, billing, system health.
 All endpoints require super admin authentication.
 """
 import os
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func
@@ -598,7 +598,7 @@ def resolve_error(
     if not error_log:
         raise HTTPException(status_code=404, detail="Error not found")
     error_log.status = "resolved_manually"
-    error_log.resolved_at = datetime.utcnow()
+    error_log.resolved_at = datetime.now(timezone.utc)
     db.commit()
     return {"ok": True, "id": error_id, "status": "resolved_manually"}
 
@@ -630,7 +630,7 @@ def error_stats(
     _: dict = Depends(get_super_admin),
 ):
     """Healing statistics for the last 24 hours."""
-    since = datetime.utcnow() - timedelta(hours=24)
+    since = datetime.now(timezone.utc) - timedelta(hours=24)
     errors = db.query(ErrorLog).filter(ErrorLog.created_at >= since).all()
 
     total = len(errors)
