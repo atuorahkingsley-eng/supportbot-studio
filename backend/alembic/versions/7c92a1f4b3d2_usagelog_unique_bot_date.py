@@ -42,17 +42,15 @@ def upgrade() -> None:
     conn.execute(sa.text("""
         DELETE FROM usage_logs
         WHERE id NOT IN (
-            SELECT keep_id FROM (
-                SELECT MAX(id) AS keep_id
-                FROM usage_logs
-                GROUP BY bot_id, date
-                HAVING MAX(total_messages) = (
-                    SELECT MAX(total_messages)
-                    FROM usage_logs u2
-                    WHERE u2.bot_id = usage_logs.bot_id
-                      AND u2.date = usage_logs.date
-                )
-            ) AS keepers
+            SELECT MAX(u1.id)
+            FROM usage_logs u1
+            WHERE u1.total_messages = (
+                SELECT MAX(u2.total_messages)
+                FROM usage_logs u2
+                WHERE u2.bot_id = u1.bot_id
+                  AND u2.date = u1.date
+            )
+            GROUP BY u1.bot_id, u1.date
         )
     """))
 
