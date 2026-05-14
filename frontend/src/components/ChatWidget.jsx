@@ -324,17 +324,19 @@ export default function ChatWidget({ config, botId }) {
     return () => clearTimeout(t)
   }, [salesConfig])
 
-  // Phase 3: exit intent
+  // Phase 3: exit intent — mount only, ref for stale closure avoidance
+  const exitIntentShownRef = useRef(false)
   useEffect(() => {
     if (!salesConfig?.exit_intent_enabled) return
     const handleMouseLeave = (e) => {
-      if (e.clientY <= 0 && !showExitIntent && messages.filter(m => m.role === 'user').length > 0) {
+      if (e.clientY <= 0 && !exitIntentShownRef.current && messagesRef.current.filter(m => m.role === 'user').length > 0) {
+        exitIntentShownRef.current = true
         setShowExitIntent(true)
       }
     }
     document.addEventListener('mouseleave', handleMouseLeave)
     return () => document.removeEventListener('mouseleave', handleMouseLeave)
-  }, [salesConfig, showExitIntent, messages])
+  }, []) // mount only — messagesRef keeps data fresh
 
   // Phase 4: Speech Recognition setup
   useEffect(() => {
