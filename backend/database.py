@@ -141,6 +141,49 @@ class UsageLog(Base):
     estimated_api_cost = Column(Float, default=0.0)
 
 
+class UsageAlert(Base):
+    """Tracks usage warning emails sent per tenant per month.
+
+    Prevents duplicate alerts for the same threshold in the same month.
+    Used by the overage warning system in ``services/usage_alerts.py``.
+
+    Attributes:
+        id: Primary key.
+        bot_id: Foreign key to tenants table.
+        month: Year-month string e.g. ``'2026-05'``.
+        threshold: One of ``'warning_80'``, ``'warning_95'``, ``'limit_reached'``.
+        sent_at: UTC timestamp when alert was sent.
+    """
+    __tablename__ = "usage_alerts"
+
+    id = Column(Integer, primary_key=True)
+    bot_id = Column(String, ForeignKey("tenants.bot_id"), nullable=False, index=True)
+    month = Column(String, nullable=False)
+    threshold = Column(String, nullable=False)
+    sent_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        UniqueConstraint("bot_id", "month", "threshold", name="uq_usage_alert_bot_month_threshold"),
+    )
+
+
+def format_message_limit(limit: int) -> str:
+    """Format message limit for human display.
+
+    Returns ``'Unlimited'`` for enterprise-tier limits (>= 999_999_999)
+    rather than showing a large integer.
+
+    Args:
+        limit: Raw message limit from database.
+
+    Returns:
+        ``'Unlimited'`` if limit >= 999_999_999, otherwise comma-formatted number.
+    """
+    if limit >= 999_999_999:
+        return "Unlimited"
+    return f"{limit:,}"
+
+
 # ── Original models (now with bot_id) ─────────────────────────────────────────
 
 class BotConfig(Base):

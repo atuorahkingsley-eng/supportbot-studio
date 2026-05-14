@@ -15,7 +15,7 @@ from backend.database import (
     get_db, get_dialect, Tenant, SuperAdmin, BotConfig, FAQEntry, Conversation,
     Message, Lead, UsageLog, ErrorLog, generate_bot_id, generate_api_key,
     WebhookConfig, ReportSchedule, Visitor, VisitorConversation,
-    SalesConfig, BrandVoice, PendingEscalation,
+    SalesConfig, BrandVoice, PendingEscalation, format_message_limit,
 )
 from backend.services.auth import hash_password, get_super_admin, validate_password_strength
 
@@ -23,11 +23,12 @@ router = APIRouter(prefix="/api/admin", tags=["admin"])
 
 PLAN_PRICES = {"basic": 100, "pro": 200, "enterprise": 400}
 PLAN_LIMITS: dict[str, int] = {
-    "starter": 500,
-    "growth": 2000,
-    "pro": 10000,
-    "enterprise": 999999,
-    "agency": 999999,
+    "starter":    500,
+    "basic":      500,
+    "growth":     2_000,
+    "pro":        10_000,
+    "agency":     50_000,
+    "enterprise": 999_999_999,
 }
 
 
@@ -46,7 +47,7 @@ def _tenant_detail(t: Tenant, db: Session) -> dict:
         "plan": t.plan,
         "is_active": t.is_active,
         "messages_used_this_month": t.messages_used_this_month,
-        "monthly_message_limit": t.monthly_message_limit,
+        "monthly_message_limit": format_message_limit(t.monthly_message_limit),
         "faq_count": faq_count,
         "conversation_count": convo_count,
         "lead_count": lead_count,
@@ -87,8 +88,6 @@ def create_tenant(
     if db.query(Tenant).filter(Tenant.owner_email == data.owner_email).first():
         raise HTTPException(status_code=400, detail="Email already registered")
 
-    limits = {"basic": 1000, "pro": 5000, "enterprise": 20000}
-
     bot_id = generate_bot_id()
     api_key = generate_api_key()
 
@@ -100,7 +99,7 @@ def create_tenant(
         password_hash=hash_password(data.password),
         api_key=api_key,
         plan=data.plan,
-        monthly_message_limit=limits.get(data.plan, 1000),
+        monthly_message_limit=PLAN_LIMITS.get(data.plan, 1000),
         is_active=True,
     )
     db.add(tenant)

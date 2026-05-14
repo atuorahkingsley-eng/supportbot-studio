@@ -63,13 +63,33 @@ class ChatResponse(BaseModel):
 
 
 class RateRequest(BaseModel):
-    """Body for /api/chat/rate. bot_id is required so we can pin the
-    conversation lookup to the right tenant — preventing a stranger with a
-    leaked session_id from triggering a Claude summary call on someone
-    else's visitor record."""
-    bot_id: str
     session_id: str
+    bot_id: str
     rating: int
+
+
+def _check_usage_threshold(tenant: Tenant) -> str | None:
+    """Check if tenant is near or at the monthly message limit.
+
+    Args:
+        tenant: Current tenant object with usage data.
+
+    Returns:
+        ``'warning_80'``, ``'warning_95'``, ``'limit_reached'``,
+        or ``None`` if usage is below 80%.
+    """
+    used = tenant.messages_used_this_month
+    limit = tenant.monthly_message_limit
+    if limit <= 0:
+        return None
+    pct = used / limit
+    if pct >= 1.0:
+        return "limit_reached"
+    if pct >= 0.95:
+        return "warning_95"
+    if pct >= 0.80:
+        return "warning_80"
+    return None
 
 
 # ── Shared helpers ─────────────────────────────────────────────────────────────
@@ -518,6 +538,21 @@ async def public_chat(
             session_id=data.session_id or str(uuid.uuid4()),
         )
 
+    # ── Threshold check ─────────────────────────────────────────────────────────
+    # Refresh tenant after the atomic increment, then check usage thresholds
+    # and fire background warning tasks if needed. 80%/95% warnings are async
+    # and don't block the chat response.
+    db.refresh(tenant)
+    threshold = _check_usage_threshold(tenant)
+    if threshold:
+        from backend.services.usage_alerts import send_usage_warning_task
+
+        background_tasks.add_task(
+            send_usage_warning_task,
+            bot_id=tenant.bot_id,
+            threshold=threshold,
+        )
+
     session_id = data.session_id or str(uuid.uuid4())
     result = await _process_chat(
         bot_id=data.bot_id,
@@ -573,6 +608,18 @@ async def chat(
         raise HTTPException(
             status_code=402,
             detail="Monthly message limit reached for this tenant.",
+        )
+
+    # ── Threshold check (mirrors public_chat) ───────────────────────────────
+    db.refresh(tenant)
+    threshold = _check_usage_threshold(tenant)
+    if threshold:
+        from backend.services.usage_alerts import send_usage_warning_task
+
+        background_tasks.add_task(
+            send_usage_warning_task,
+            bot_id=tenant.bot_id,
+            threshold=threshold,
         )
 
     session_id = data.session_id or str(uuid.uuid4())

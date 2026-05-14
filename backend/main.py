@@ -45,10 +45,13 @@ def _setup_super_admin():
 def _reset_monthly_counts():
     """APScheduler job: reset all tenants' message counts on 1st of month."""
     from backend.database import Tenant
+    from backend.services.usage_alerts import prune_old_alerts
+
     db = SessionLocal()
     try:
         db.query(Tenant).update({Tenant.messages_used_this_month: 0})
         db.commit()
+        prune_old_alerts(db)
         print("Monthly message counts reset for all tenants.")
     finally:
         db.close()

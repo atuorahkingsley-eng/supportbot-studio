@@ -57,6 +57,8 @@ function SuperAdminLogin({ onLogin }) {
 
 // ── Tenant Row ─────────────────────────────────────────────────────────────────
 function TenantRow({ t, onEdit, onToggle, onResetPassword, onDelete }) {
+  const formatMessageLimit = (limit) =>
+    limit >= 999999999 ? 'Unlimited' : limit.toLocaleString()
   const usagePct = t.monthly_message_limit > 0 ? Math.min(100, Math.round(t.messages_used_this_month / t.monthly_message_limit * 100)) : 0
   return (
     <tr style={{ borderBottom: '1px solid var(--border)' }}>
@@ -70,7 +72,7 @@ function TenantRow({ t, onEdit, onToggle, onResetPassword, onDelete }) {
           <div style={{ width: 80, height: 6, background: 'var(--border)', borderRadius: 99 }}>
             <div style={{ width: usagePct + '%', height: '100%', background: usagePct > 80 ? 'var(--color-danger)' : 'var(--color-cta)', borderRadius: 99 }} />
           </div>
-          <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{t.messages_used_this_month}/{t.monthly_message_limit}</span>
+          <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{t.messages_used_this_month.toLocaleString()}/{formatMessageLimit(t.monthly_message_limit)}</span>
         </div>
       </td>
       <td style={{ padding: '10px 12px', fontSize: 12, color: 'var(--text-secondary)' }}>{t.faq_count} FAQs · {t.conversation_count} convos · {t.lead_count} leads</td>
@@ -204,9 +206,11 @@ function TenantModal({ tenant, onClose, onSaved }) {
           <div><label className="label">Company Name</label><input className="input" value={form.company_name} onChange={e => setForm(p => ({ ...p, company_name: e.target.value }))} /></div>
           <div><label className="label">Plan</label>
             <select className="input" value={form.plan} onChange={e => setForm(p => ({ ...p, plan: e.target.value }))}>
-              <option value="basic">Basic ($100/mo · 1,000 msgs)</option>
-              <option value="pro">Pro ($200/mo · 5,000 msgs)</option>
-              <option value="enterprise">Enterprise ($400/mo · 20,000 msgs)</option>
+              <option value="starter">Starter — 500 msgs/mo</option>
+              <option value="growth">Growth — 2,000 msgs/mo</option>
+              <option value="pro">Pro — 10,000 msgs/mo</option>
+              <option value="agency">Agency — 50,000 msgs/mo (5 bots)</option>
+              <option value="enterprise">Enterprise — Unlimited</option>
             </select>
           </div>
           {isEdit && (
