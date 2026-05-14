@@ -81,6 +81,9 @@ export default function EmbedChat() {
   const messagesEndRef = useRef(null)
   const recognitionRef = useRef(null)
   const silenceTimerRef = useRef(null)
+  const sendMessageRef = useRef(sendMessage)
+
+  useEffect(() => { sendMessageRef.current = sendMessage }, [sendMessage])
 
   const browserLang = navigator.language?.split('-')[0] || 'en'
 
@@ -218,7 +221,7 @@ export default function EmbedChat() {
       silenceTimerRef.current = setTimeout(() => {
         rec.stop()
         setListening(false)
-        if (transcript.trim()) sendMessage(transcript, 'voice')
+        if (transcript.trim()) sendMessageRef.current(transcript, 'voice')
       }, 3000)
     }
 
