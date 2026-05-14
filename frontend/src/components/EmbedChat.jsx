@@ -334,15 +334,6 @@ export default function EmbedChat() {
           </div>
         )}
 
-        {!escalated && !showEscalateForm && !escalationShown && messages.length >= 2 && (
-          <div style={{ textAlign: 'center', margin: '6px 0' }}>
-            <button onClick={() => { setEscalationShown(true); setShowEscalateForm(true); }} style={{ background: 'transparent', border: '1px solid #D1D5DB', borderRadius: 16, padding: '5px 14px', cursor: 'pointer', fontSize: 12, color: '#6B7280', transition: 'all 0.2s' }}
-              onMouseEnter={e => e.currentTarget.style.borderColor = accent}
-              onMouseLeave={e => e.currentTarget.style.borderColor = '#D1D5DB'}
-            >Request human support</button>
-          </div>
-        )}
-
         {salesAction && (
           <div style={{ margin: '4px 0' }}>
             {salesAction.type === 'discount' && (
