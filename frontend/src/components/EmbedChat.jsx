@@ -67,11 +67,8 @@ export default function EmbedChat() {
   const [visitorId] = useState(() => getOrCreateVisitorId())
   const [isReturning, setIsReturning] = useState(false)
   const [detectedLang, setDetectedLang] = useState(null)
-  const [salesAction, setSalesAction] = useState(null)
-  const [leadEmail, setLeadEmail] = useState('')
-  const [leadCapturing, setLeadCapturing] = useState(false)
   const [escalated, setEscalated] = useState(false)
-  const [showEscalateForm, setShowEscalateForm] = useState(false)
+  const [contactFormMode, setContactFormMode] = useState(null)  // null | 'escalation_urgent' | 'escalation_soft'
   const [escalationShown, setEscalationShown] = useState(false)
   const [lastUserMessage, setLastUserMessage] = useState('')
   const [escName, setEscName] = useState('')
@@ -113,6 +110,21 @@ export default function EmbedChat() {
     }
   }, [config])
 
+  /*
+   * PRICING KNOWLEDGE BASE REQUIREMENT
+   * Bot answers pricing questions from FAQs before showing any contact form.
+   * Ensure these FAQs exist in the tenant knowledge base:
+   *
+   * - What are your pricing plans?
+   * - What is included in Starter/Growth/Pro/Agency/Enterprise?
+   * - Is there a free trial?
+   * - What is the setup/onboarding fee for?
+   * - What happens at the message limit?
+   * - Do you offer annual billing?
+   * - Can I upgrade my plan?
+   *
+   * Without these FAQs, Claude hits needs_escalation too early.
+   */
   const sendMessage = async (text, method = 'text') => {
     if (!text.trim() || loading) return
     const userMsg = text.trim()
@@ -122,14 +134,13 @@ export default function EmbedChat() {
       setEscalationShown(true)
       setLastUserMessage(userMsg)
       setMessages(prev => [...prev, { role: 'user', content: userMsg }, { role: 'assistant', content: 'Of course! Let me get someone for you right away.' }])
-      setTimeout(() => setShowEscalateForm(true), 200)
+      setTimeout(() => setContactFormMode('escalation_urgent'), 200)
       return
     }
 
     setLastUserMessage(userMsg)
     setMessages(prev => [...prev, { role: 'user', content: userMsg }])
     setLoading(true)
-    setSalesAction(null)
 
     try {
       const r = await fetch('/api/chat/public', {
@@ -148,7 +159,6 @@ export default function EmbedChat() {
       setMessages(prev => [...prev, { role: 'assistant', content: data.reply }])
       if (data.is_returning) setIsReturning(true)
       if (data.detected_language) setDetectedLang(data.detected_language)
-      if (data.sales_action) setSalesAction(data.sales_action)
 
       // BUG 2 fix: server is the source of truth for "already escalated in this
       // conversation". On reload / iframe re-mount, local React state resets to
@@ -159,10 +169,10 @@ export default function EmbedChat() {
       if (data.already_escalated) {
         setEscalated(true)
         setEscalationShown(true)
-        setShowEscalateForm(false)
+        setContactFormMode(null)
       } else if (data.needs_escalation && !escalated && !escalationShown) {
         setEscalationShown(true)
-        setShowEscalateForm(true)
+        setContactFormMode('escalation_soft')
       }
 
       if (window.parent !== window) {
@@ -218,32 +228,10 @@ export default function EmbedChat() {
     setInputMethod('voice')
   }
 
-  const captureLeadSubmit = async (e) => {
-    e.preventDefault()
-    if (!leadEmail.trim()) return
-    setLeadCapturing(true)
-    try {
-      await fetch('/api/sales/leads/capture/public', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          bot_id: botId,
-          email: leadEmail,
-          source: 'chat_capture',
-          buying_signal_score: 4,
-          visitor_id: visitorId,
-        }),
-      })
-      setSalesAction(null)
-      setMessages(prev => [...prev, { role: 'assistant', content: `Thanks! We'll reach out to ${leadEmail} shortly.` }])
-    } catch { /* silently fail */ }
-    finally { setLeadCapturing(false) }
-  }
-
   const handleEscalateSubmit = async (e) => {
     e.preventDefault()
     setEscalated(true)
-    setShowEscalateForm(false)
+    setContactFormMode(null)
     try {
       const r = await fetch('/api/escalate/public', {
         method: 'POST',
@@ -267,7 +255,7 @@ export default function EmbedChat() {
 
   const handleEscalateSkip = async () => {
     setEscalated(true)
-    setShowEscalateForm(false)
+    setContactFormMode(null)
     try {
       const r = await fetch('/api/escalate/public', {
         method: 'POST',
@@ -296,11 +284,6 @@ export default function EmbedChat() {
   }
 
   const accent = config.brand_color || '#6366F1'
-  const safeBookingUrl = salesAction?.booking_url &&
-    (salesAction.booking_url.startsWith('https://') ||
-     salesAction.booking_url.startsWith('http://'))
-    ? salesAction.booking_url
-    : null
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif', background: '#F9FAFB', '--accent': accent }}>
@@ -346,9 +329,11 @@ export default function EmbedChat() {
           </div>
         )}
 
-        {showEscalateForm && !escalated && (
+        {contactFormMode && !escalated && (
           <div style={{ background: '#FFF7ED', border: '1px solid #FED7AA', borderRadius: 12, padding: '14px', margin: '4px 0' }}>
-            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 8, color: '#C2410C' }}>Talk to a human</div>
+            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 8, color: '#C2410C' }}>
+              {contactFormMode === 'escalation_urgent' ? 'Talk to a human' : 'Want to talk to our team?'}
+            </div>
             <form onSubmit={handleEscalateSubmit}>
               <input value={escName} onChange={e => setEscName(e.target.value)} placeholder="Your name" style={{ width: '100%', marginBottom: 6, padding: '7px 10px', border: '1px solid #FED7AA', borderRadius: 6, fontSize: 13, boxSizing: 'border-box' }} />
               <input value={escEmail} onChange={e => setEscEmail(e.target.value)} placeholder="your@email.com" type="email" required style={{ width: '100%', marginBottom: 6, padding: '7px 10px', border: '1px solid #FED7AA', borderRadius: 6, fontSize: 13, boxSizing: 'border-box' }} />
@@ -359,36 +344,6 @@ export default function EmbedChat() {
                 <button type="button" onClick={handleEscalateSkip} style={{ background: 'transparent', color: '#6B7280', border: '1px solid #D1D5DB', padding: '7px 0', borderRadius: 6, cursor: 'pointer', fontSize: 13, flex: 1 }}>Skip</button>
               </div>
             </form>
-          </div>
-        )}
-
-        {salesAction && (
-          <div style={{ margin: '4px 0' }}>
-            {salesAction.type === 'discount' && (
-              <div style={{ background: '#FEF9C3', border: '1px solid #FDE047', borderRadius: 12, padding: '12px 14px', fontSize: 13 }}>
-                <div style={{ fontWeight: 600, marginBottom: 4 }}>🎁 {salesAction.message}</div>
-                <code style={{ background: '#fff', padding: '2px 8px', borderRadius: 4, border: '1px solid #FDE047', fontSize: 14, fontWeight: 700 }}>{salesAction.code}</code>
-              </div>
-            )}
-            {salesAction.type === 'demo' && (
-              <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 12, padding: '12px 14px', fontSize: 13 }}>
-                <div style={{ fontWeight: 600, marginBottom: 8 }}>📅 {salesAction.message}</div>
-                {safeBookingUrl && (
-                  <a href={safeBookingUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-block', background: accent, color: '#fff', padding: '6px 14px', borderRadius: 8, textDecoration: 'none', fontSize: 13, fontWeight: 600 }}>Book Demo →</a>
-                )}
-              </div>
-            )}
-            {salesAction.type === 'capture_lead' && (
-              <div style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 12, padding: '12px 14px', fontSize: 13 }}>
-                <div style={{ fontWeight: 600, marginBottom: 8 }}>✉️ {salesAction.message}</div>
-                <form onSubmit={captureLeadSubmit} style={{ display: 'flex', gap: 6 }}>
-                  <input type="email" placeholder="your@email.com" value={leadEmail} onChange={e => setLeadEmail(e.target.value)} required style={{ flex: 1, padding: '6px 10px', border: '1px solid #BBF7D0', borderRadius: 6, fontSize: 13 }} />
-                  <button type="submit" disabled={leadCapturing} style={{ background: accent, color: '#fff', border: 'none', padding: '6px 12px', borderRadius: 6, cursor: 'pointer', fontWeight: 600, fontSize: 13 }}>
-                    {leadCapturing ? '…' : 'Send'}
-                  </button>
-                </form>
-              </div>
-            )}
           </div>
         )}
 
