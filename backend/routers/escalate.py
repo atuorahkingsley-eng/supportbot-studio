@@ -214,12 +214,6 @@ async def _do_escalate(
     # ── Resolve final email + contact details ─────────────────────────────────
     effective_email = email or customer_email
 
-    # Conversation has no visitor_id column — look it up via the join table.
-    visitor_link = db.query(VisitorConversation).filter(
-        VisitorConversation.conversation_id == convo.id,
-    ).first()
-    convo_visitor_id = visitor_link.visitor_id if visitor_link else None
-
     contact = _resolve_contact(
         db=db, bot_id=bot_id, convo=convo,
         visitor_id=convo_visitor_id,
