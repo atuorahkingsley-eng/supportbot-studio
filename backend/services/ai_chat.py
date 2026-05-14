@@ -1,9 +1,14 @@
 import json
 import re
 from typing import List, Optional
+
 import anthropic
+import structlog
+
 from backend.config import settings
 from backend.services.brand_voice_analyzer import render_voice_block
+
+log = structlog.get_logger(__name__)
 
 
 # ── Anthropic client (module-level, reused) ───────────────────────────────────
@@ -202,6 +207,14 @@ async def get_ai_reply(
         system=system_prompt,
         messages=trimmed_messages,
     )
+
+    if not response.content:
+        log.warning("anthropic_empty_response", model=response.model)
+        return (
+            "I'm unable to respond to that. Please try rephrasing your question.",
+            False,
+            None,
+        )
 
     raw = response.content[0].text
     return parse_metadata(raw)
