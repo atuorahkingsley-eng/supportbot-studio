@@ -33,6 +33,7 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(
             ["bot_id"],
             ["tenants.bot_id"],
+            ondelete="CASCADE",
         ),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint(
