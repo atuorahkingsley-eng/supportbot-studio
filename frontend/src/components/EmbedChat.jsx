@@ -39,13 +39,31 @@ function getOrCreateVisitorId() {
   return vid
 }
 
+// Per-tab session continuity. Without persistence, every page reload starts a
+// new server-side Conversation and the `already_escalated` flag from the
+// previous round is never observed (BUG 2 would resurface after reload). Scoped
+// to sessionStorage on purpose: a new tab = a new conversation, but reloading
+// the embed inside the same tab keeps the thread. Falls back to a fresh ID if
+// sessionStorage is unavailable (some iframe sandboxes block it).
+function getOrCreateSessionId() {
+  try {
+    const existing = sessionStorage.getItem('supportbot_session_id')
+    if (existing) return existing
+    const fresh = 'sess_' + Math.random().toString(36).substring(2)
+    sessionStorage.setItem('supportbot_session_id', fresh)
+    return fresh
+  } catch {
+    return 'sess_' + Math.random().toString(36).substring(2)
+  }
+}
+
 export default function EmbedChat() {
   const { botId } = useParams()
   const [config, setConfig] = useState(null)
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
-  const [sessionId, setSessionId] = useState(() => 'sess_' + Math.random().toString(36).substring(2))
+  const [sessionId, setSessionId] = useState(getOrCreateSessionId)
   const [visitorId] = useState(() => getOrCreateVisitorId())
   const [isReturning, setIsReturning] = useState(false)
   const [detectedLang, setDetectedLang] = useState(null)
@@ -132,7 +150,17 @@ export default function EmbedChat() {
       if (data.detected_language) setDetectedLang(data.detected_language)
       if (data.sales_action) setSalesAction(data.sales_action)
 
-      if (data.needs_escalation && !escalated && !escalationShown) {
+      // BUG 2 fix: server is the source of truth for "already escalated in this
+      // conversation". On reload / iframe re-mount, local React state resets to
+      // false — without this sync, the form would re-pop even after the visitor
+      // already submitted their details. The server suppresses needs_escalation
+      // when already_escalated is true, but we also reflect it locally so the
+      // keyword-trigger path (detectEscalationIntent above) stays suppressed too.
+      if (data.already_escalated) {
+        setEscalated(true)
+        setEscalationShown(true)
+        setShowEscalateForm(false)
+      } else if (data.needs_escalation && !escalated && !escalationShown) {
         setEscalationShown(true)
         setShowEscalateForm(true)
       }

@@ -54,6 +54,12 @@ class ChatResponse(BaseModel):
     is_returning: bool = False
     detected_language: Optional[str] = None
     sales_action: Optional[Any] = None
+    # True once Conversation.escalated has been set server-side. The embed
+    # widget uses this to suppress the contact form on subsequent messages
+    # (page reload, iframe re-mount) so a visitor who already submitted their
+    # details is never asked again in the same conversation. Server is the
+    # source of truth — client-side React state alone is wiped on reload.
+    already_escalated: bool = False
 
 
 class RateRequest(BaseModel):
@@ -443,6 +449,14 @@ async def _process_chat(
     )
     db.commit()
 
+    # Suppress needs_escalation if this conversation has already escalated —
+    # otherwise the widget would re-pop the contact form on every message
+    # after submission (BUG 2). already_escalated is the authoritative server
+    # signal the widget reads to keep state across page reloads.
+    already_escalated = bool(convo.escalated)
+    if already_escalated:
+        needs_escalation = False
+
     return ChatResponse(
         reply=reply,
         was_auto_reply=was_auto_reply,
@@ -452,6 +466,7 @@ async def _process_chat(
         is_returning=is_returning,
         detected_language=detected_language,
         sales_action=sales_action,
+        already_escalated=already_escalated,
     )
 
 
