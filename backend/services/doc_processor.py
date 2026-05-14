@@ -8,6 +8,11 @@ from backend.config import settings
 
 log = structlog.get_logger(__name__)
 
+# Module-level Anthropic client — reused across document uploads.
+# Matches the pattern in ai_chat.py:22. Per-call construction
+# wastes a connection pool on every upload.
+_client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key, timeout=30.0)
+
 
 async def process_document(file_path: str, ext: str) -> List[dict]:
     text = ""
@@ -97,7 +102,7 @@ async def _generate_qa_pairs(text: str) -> List[dict]:
     chunks = _chunk_text(text, max_chars=2000)
     all_pairs = []
 
-    client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key, timeout=30.0)
+    client = _client
 
     for chunk in chunks[:5]:  # Limit to 5 chunks per upload
         prompt = (
