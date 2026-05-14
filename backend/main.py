@@ -220,7 +220,6 @@ async def lifespan(app: FastAPI):
             print(f"Telegram webhook registration failed: {e}", file=sys.stderr)
 
     from backend.services.report_scheduler import scheduler
-    from backend.config import settings
 
     # Monthly counter reset (1st of month at midnight UTC)
     scheduler.add_job(
