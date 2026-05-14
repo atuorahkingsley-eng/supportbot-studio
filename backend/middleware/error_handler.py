@@ -48,7 +48,9 @@ class ErrorHandlerMiddleware(BaseHTTPMiddleware):
         # Cache body bytes once so it can be read again in the except block
         body_bytes = b""
         try:
-            body_bytes = await request.body()
+            content_type = request.headers.get("content-type", "")
+            if "multipart/form-data" not in content_type:
+                body_bytes = await request.body()
         except Exception:
             pass
 
