@@ -85,7 +85,7 @@ export default function WebhookSettings() {
     if (form.platform === 'custom_https') {
       if (form.secret.trim()) payload.secret = form.secret
       // Empty list → null = no per-event filter (dispatcher fires every event).
-      payload.events = form.events.length > 0 ? JSON.stringify(form.events) : null
+      payload.events = form.events.length > 0 ? form.events : null
     }
     try {
       const r = await fetch('/api/webhooks', {
