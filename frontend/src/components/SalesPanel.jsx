@@ -62,10 +62,12 @@ export default function SalesPanel() {
         new Date(l.created_at).toLocaleDateString(), l.followed_up]))
     ].join('\n')
     const blob = new Blob([csv], { type: 'text/csv' })
+    const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
-    a.href = URL.createObjectURL(blob)
+    a.href = url
     a.download = 'leads.csv'
     a.click()
+    URL.revokeObjectURL(url)
   }
 
   const scoreColor = (s) => {
