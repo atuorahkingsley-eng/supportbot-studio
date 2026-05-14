@@ -195,8 +195,10 @@ async def lifespan(app: FastAPI):
     _setup_super_admin()
     start_scheduler()
 
-    from backend.services.email_notify import configure_smtp_at_startup
-    configure_smtp_at_startup()
+    # Escalation email is delivered via Resend's HTTPS API (port 443) — there
+    # is no SMTP port to probe at boot anymore. The probe machinery and its
+    # lifespan hook were removed when we migrated off Zoho SMTP because
+    # Render's free instance type firewalls outbound SMTP entirely.
 
     # ── Register Telegram webhook ───────────────────────────────────────────────
     if settings.telegram_bot_token:

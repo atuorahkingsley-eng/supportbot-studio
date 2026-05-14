@@ -19,7 +19,20 @@ class Settings(BaseSettings):
     telegram_chat_id: str = ""
     telegram_webhook_secret: str = ""
 
-    # Zoho SMTP for escalation email delivery
+    # Resend HTTPS API for escalation email delivery. Migrated off Zoho SMTP
+    # because Render's free instance type firewalls outbound SMTP ports
+    # (25/465/587) as of Sept 2025 — HTTPS:443 is firewalled nowhere, so
+    # transactional email is now portable across hosts.
+    # resend_from_email is the fully-formed From: header, e.g.
+    #   "SupportBot <alerts@yourdomain.com>"
+    # The sending domain must be verified in the Resend dashboard.
+    resend_api_key: str = ""
+    resend_from_email: str = ""
+
+    # Zoho SMTP credentials are retained for one release for rollback safety
+    # only — the code path no longer reads them. Safe to remove from .env once
+    # the Resend migration has soaked for a week. The mailbox itself is still
+    # used as the inbox (custom-domain MX still points to Zoho).
     zoho_smtp_user: str = ""
     zoho_smtp_password: str = ""
     zoho_smtp_host: str = "smtp.zoho.com"

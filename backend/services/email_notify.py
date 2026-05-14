@@ -1,106 +1,64 @@
-import smtplib
-import socket
-import ssl
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
-from typing import Optional
+"""Escalation email delivery via Resend HTTPS API.
 
+Pre-migration this routed through Zoho SMTP, but Render's free instance type
+firewalls outbound SMTP ports (25/465/587) at the network level, so escalation
+emails silently failed to send. Resend speaks HTTPS on port 443 — firewalled
+nowhere — so this code is portable across hosts (Render free/paid, Vercel,
+Cloudflare Workers, etc.).
+
+The Zoho mailbox is still used as the inbox; replies to escalation emails
+flow back through the custom-domain MX, which still points to Zoho. Only the
+outbound transactional path moved.
+
+Callers in ``backend.routers.escalate`` and ``backend.services.report_scheduler``
+import ``send_escalation_email`` and are unchanged — the function signature
+and return contract are preserved.
+"""
+from typing import Optional, Tuple
+
+import httpx
 import structlog
 
 from backend.config import settings
 
 log = structlog.get_logger(__name__)
 
-_smtp_port: int | None = None
-_smtp_use_ssl: bool = True
+
+# Resend transactional-email endpoint. Single POST per send, JSON in/out,
+# Bearer-token auth. Documented at https://resend.com/docs/api-reference/emails/send-email.
+_RESEND_API_URL = "https://api.resend.com/emails"
+
+# Conservative client-side timeout. Resend's median latency is sub-second;
+# 10s gives generous headroom for cold TLS handshakes on Render's edge.
+_HTTP_TIMEOUT_SECONDS = 10.0
 
 
-def _probe_port(host: str, port: int, timeout: float = 10.0) -> bool:
-    """Check TCP reachability of host:port.
-
-    Args:
-        host: SMTP server hostname.
-        port: Port number to probe.
-        timeout: Connection timeout in seconds.
-
-    Returns:
-        True if connection succeeds within timeout, False otherwise.
-    """
-    try:
-        with socket.create_connection((host, port), timeout=timeout):
-            return True
-    except OSError:
-        return False
-
-
-def configure_smtp_at_startup() -> None:
-    """Probe preferred SMTP port at startup.
-
-    Falls back to alternate port if preferred is unreachable.
-    Sets module-level ``_smtp_port`` and ``_smtp_use_ssl``.
-    Idempotent — safe to call multiple times.
-    No-ops if credentials are missing.
-
-    If both ports fail, leaves globals at ``None`` so
-    ``send_escalation_email`` falls back to
-    ``settings.zoho_smtp_port`` (no behavioural regression
-    on transient probe failures).
-
-    Probe runs once at boot only. Re-probe requires redeploy.
-    """
-    global _smtp_port, _smtp_use_ssl
-
-    if not settings.zoho_smtp_user or not settings.zoho_smtp_password:
-        log.info("smtp.probe_skipped", reason="credentials_missing")
-        return
-
-    host = settings.zoho_smtp_host
-    preferred = settings.zoho_smtp_port
-    other = 465 if preferred == 587 else 587
-
-    if _probe_port(host, preferred):
-        _smtp_port = preferred
-        _smtp_use_ssl = preferred == 465
-        log.info("smtp.probe_ok", port=preferred)
-        return
-
-    if _probe_port(host, other):
-        _smtp_port = other
-        _smtp_use_ssl = other == 465
-        log.warning("smtp.probe_fellback_to", preferred=preferred, using=other)
-        return
-
-    _smtp_port = None
-    log.error("smtp.probe_failed", host=host, tried=[preferred, other])
-
-
-async def send_escalation_email(
-    to_email: str,
+def _render_bodies(
     bot_name: str,
     visitor_message: str,
     session_id: str,
-    contact_name: Optional[str] = None,
-    contact_email: Optional[str] = None,
-    contact_phone: Optional[str] = None,
-) -> bool:
-    """Send escalation notification via Zoho SMTP.
+    contact_name: Optional[str],
+    contact_email: Optional[str],
+    contact_phone: Optional[str],
+) -> Tuple[str, str]:
+    """Build the plain-text and HTML email bodies.
+
+    Pure formatter — no network, no settings access — so the body shape can
+    be unit-tested independently of the transport layer.
 
     Args:
-        to_email: Client's escalation email address.
-        bot_name: Name of the bot that escalated.
-        visitor_message: Message that triggered escalation.
-        session_id: Conversation session ID.
+        bot_name: Name of the bot that escalated. Goes in subject + body header.
+        visitor_message: First user message that triggered the escalation.
+        session_id: Conversation session ID, surfaced for support-team triage.
         contact_name: Visitor name if captured.
         contact_email: Visitor email if captured.
         contact_phone: Visitor phone if captured.
 
     Returns:
-        True if sent successfully, False otherwise.
+        Tuple of (plain-text body, HTML body) ready to drop into the Resend
+        payload. Both render the same information; recipients see whichever
+        their mail client prefers.
     """
-    if not settings.zoho_smtp_user or not settings.zoho_smtp_password:
-        log.error("escalation_email_skipped", reason="SMTP credentials not configured")
-        return False
-
     contact_lines = []
     if contact_name:
         contact_lines.append(f"Name:  {contact_name}")
@@ -145,42 +103,123 @@ Sent by SupportBot Studio
 </html>
     """.strip()
 
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = f"New Escalation: {bot_name} needs your attention"
-    msg["From"] = settings.zoho_smtp_user
-    msg["To"] = to_email
-    msg.attach(MIMEText(body_text, "plain"))
-    msg.attach(MIMEText(body_html, "html"))
+    return body_text, body_html
+
+
+async def send_escalation_email(
+    to_email: str,
+    bot_name: str,
+    visitor_message: str,
+    session_id: str,
+    contact_name: Optional[str] = None,
+    contact_email: Optional[str] = None,
+    contact_phone: Optional[str] = None,
+) -> bool:
+    """Send an escalation notification via Resend.
+
+    Returns True on a 200/202 response from Resend, False on missing config,
+    non-2xx, network error, or unexpected exception. Failure modes are logged
+    with enough detail to debug from log output alone — no exceptions leak
+    out, so callers can safely treat this as a best-effort fire-and-forget.
+
+    Args:
+        to_email: The recipient's email address — typically the tenant's
+            configured escalation contact.
+        bot_name: Name of the bot that escalated. Used in subject + body.
+        visitor_message: First user message that triggered the escalation.
+        session_id: Conversation session ID, surfaced for support-team triage.
+        contact_name: Visitor name if captured during escalation form submit.
+        contact_email: Visitor email if captured.
+        contact_phone: Visitor phone if captured.
+
+    Returns:
+        True when Resend accepted the send (2xx), False otherwise.
+    """
+    if not settings.resend_api_key:
+        log.error(
+            "escalation_email_skipped",
+            reason="RESEND_API_KEY not configured",
+        )
+        return False
+    if not settings.resend_from_email:
+        log.error(
+            "escalation_email_skipped",
+            reason="RESEND_FROM_EMAIL not configured",
+        )
+        return False
+
+    body_text, body_html = _render_bodies(
+        bot_name=bot_name,
+        visitor_message=visitor_message,
+        session_id=session_id,
+        contact_name=contact_name,
+        contact_email=contact_email,
+        contact_phone=contact_phone,
+    )
+
+    payload = {
+        "from": settings.resend_from_email,
+        "to": [to_email],
+        "subject": f"New Escalation: {bot_name} needs your attention",
+        "text": body_text,
+        "html": body_html,
+    }
+    headers = {
+        "Authorization": f"Bearer {settings.resend_api_key}",
+        "Content-Type": "application/json",
+    }
 
     try:
-        context = ssl.create_default_context()
-        port = _smtp_port if _smtp_port is not None else settings.zoho_smtp_port
-        use_ssl = _smtp_use_ssl if _smtp_port is not None else True
-
-        if use_ssl:
-            with smtplib.SMTP_SSL(
-                settings.zoho_smtp_host,
-                port,
-                context=context,
-            ) as server:
-                server.login(settings.zoho_smtp_user, settings.zoho_smtp_password)
-                server.sendmail(settings.zoho_smtp_user, to_email, msg.as_string())
-        else:
-            with smtplib.SMTP(settings.zoho_smtp_host, port) as server:
-                server.ehlo()
-                server.starttls(context=context)
-                server.ehlo()
-                server.login(settings.zoho_smtp_user, settings.zoho_smtp_password)
-                server.sendmail(settings.zoho_smtp_user, to_email, msg.as_string())
-
-        log.info("escalation_email_sent", to=to_email, bot=bot_name, session=session_id)
-        return True
-    except smtplib.SMTPAuthenticationError:
-        log.error("escalation_email_auth_failed", user=settings.zoho_smtp_user)
-        return False
-    except smtplib.SMTPException as e:
-        log.error("escalation_email_smtp_failed", error=str(e), to=to_email)
+        async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT_SECONDS) as client:
+            response = await client.post(_RESEND_API_URL, headers=headers, json=payload)
+    except httpx.HTTPError as e:
+        # Covers connect timeouts, DNS failures, TLS errors, read timeouts.
+        # Anything network-shaped lands here.
+        log.error(
+            "escalation_email_http_error",
+            error=str(e),
+            to=to_email,
+            bot=bot_name,
+        )
         return False
     except Exception as e:
-        log.error("escalation_email_unexpected_error", error=str(e), to=to_email)
+        # Defensive: callers (escalate router, report scheduler) wrap us in
+        # their own try/except, so a leak here would still be caught, but
+        # logging at this layer keeps the failure attributable to the
+        # email path rather than to the caller.
+        log.error(
+            "escalation_email_unexpected_error",
+            error=str(e),
+            to=to_email,
+            bot=bot_name,
+        )
         return False
+
+    if 200 <= response.status_code < 300:
+        # Resend's success body is {"id": "<uuid>"}; capturing the id makes
+        # cross-referencing a failed delivery in Resend's dashboard trivial.
+        resend_id = None
+        try:
+            resend_id = response.json().get("id")
+        except Exception:
+            pass
+        log.info(
+            "escalation_email_sent",
+            to=to_email,
+            bot=bot_name,
+            session=session_id,
+            resend_id=resend_id,
+        )
+        return True
+
+    # Non-2xx: log status + truncated body. Common failures are 401 (bad API
+    # key), 403 (domain not verified), 422 (malformed payload), 429 (rate
+    # limit). Body is truncated to 500 chars to keep log lines bounded.
+    log.error(
+        "escalation_email_resend_failed",
+        status=response.status_code,
+        body=response.text[:500],
+        to=to_email,
+        bot=bot_name,
+    )
+    return False
