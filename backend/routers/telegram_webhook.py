@@ -13,6 +13,7 @@ knows the Render URL could forge updates, but the only damage is a bogus
 chat ID being stored (no data exfiltration).
 """
 from fastapi import APIRouter, Depends, Request
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from backend.config import settings
@@ -35,7 +36,7 @@ async def telegram_webhook(request: Request, db: Session = Depends(get_db)):
     if settings.telegram_webhook_secret:
         received = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
         if received != settings.telegram_webhook_secret:
-            return {"ok": False}
+            return JSONResponse({"ok": False, "description": "Unauthorized"}, status_code=401)
 
     message = update.get("message", {})
     text = message.get("text", "")
