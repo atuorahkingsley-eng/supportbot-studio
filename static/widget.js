@@ -1,4 +1,14 @@
 (function () {
+  // Trim a trailing slash off `base` and ensure `path` starts with exactly one
+  // leading slash before concatenation. Without this, `baseUrl` (which ends in
+  // `/` when widget.js is served from the site root) + an absolute path like
+  // `/embed/...` produced `https://host//embed/...`. The double-slash 404s on
+  // Render's path normalisation and was the cause of the iframe failing to
+  // load when the bubble was clicked.
+  function joinUrl(base, path) {
+    return base.replace(/\/$/, '') + (path.startsWith('/') ? path : '/' + path);
+  }
+
   var script = document.currentScript;
   var botId = script.getAttribute('data-bot-id');
   var position = script.getAttribute('data-position') || 'right';
@@ -52,7 +62,7 @@
   // iframe (hidden initially)
   var frame = document.createElement('iframe');
   frame.id = 'supportbot-frame';
-  frame.src = baseUrl + '/embed/' + botId;
+  frame.src = joinUrl(baseUrl, '/embed/' + botId);
   frame.style.cssText =
     'width:min(400px,calc(100vw - 40px));height:600px;max-height:80vh;border:none;border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,0.15);display:none;margin-bottom:12px;background:white;';
   frame.setAttribute('allow', 'microphone');
@@ -147,7 +157,7 @@
   }
 
   // Fetch brand color + greeting message
-  fetch(baseUrl + '/api/config/public/' + botId)
+  fetch(joinUrl(baseUrl, '/api/config/public/' + botId))
     .then(function (r) { return r.json(); })
     .then(function (config) {
       bubble.style.background = config.brand_color || '#6366F1';
