@@ -118,7 +118,7 @@ def create_tenant(
         )
     db.refresh(tenant)
 
-    base_url = os.getenv("APP_URL", "https://your-app.onrender.com")
+    base_url = settings.app_url
     embed_code = f'<script src="{base_url}/widget.js" data-bot-id="{bot_id}"></script>'
 
     return {
@@ -151,7 +151,7 @@ def get_tenant(
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
     detail = _tenant_detail(tenant, db)
-    base_url = os.getenv("APP_URL", "https://your-app.onrender.com")
+    base_url = settings.app_url
     detail["embed_code"] = f'<script src="{base_url}/widget.js" data-bot-id="{bot_id}"></script>'
     detail["api_key_masked"] = tenant.api_key[:12] + "..." + tenant.api_key[-4:]
     return detail
