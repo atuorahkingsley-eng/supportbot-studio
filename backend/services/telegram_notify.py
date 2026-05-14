@@ -4,6 +4,34 @@ import httpx
 
 from backend.config import settings
 
+_bot_username: str | None = None
+
+
+async def get_bot_username() -> str:
+    """Fetch bot username from Telegram via getMe.
+
+    Cached after first call so it doesn't hit the Telegram API
+    on every request.
+
+    Returns:
+        Bot username string (e.g. ``MyBot``) or empty string
+        if the bot token is not configured or the API call fails.
+    """
+    global _bot_username
+    if _bot_username is not None:
+        return _bot_username
+    if not settings.telegram_bot_token:
+        return ""
+    url = f"https://api.telegram.org/bot{settings.telegram_bot_token}/getMe"
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(url, timeout=5)
+            data = resp.json()
+            _bot_username = data.get("result", {}).get("username", "")
+            return _bot_username or ""
+    except Exception:
+        return ""
+
 
 async def send_telegram_message(
     text: str,

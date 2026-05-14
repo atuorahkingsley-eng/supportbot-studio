@@ -17,6 +17,7 @@ class Settings(BaseSettings):
 
     telegram_bot_token: str = ""
     telegram_chat_id: str = ""
+    telegram_webhook_secret: str = ""
 
     # Zoho SMTP for escalation email delivery
     zoho_smtp_user: str = ""

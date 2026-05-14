@@ -9,6 +9,7 @@ export default function AdminPanel({ config, setConfig }) {
   const [newA, setNewA] = useState('')
   const [uploading, setUploading] = useState(false)
   const [uploadResult, setUploadResult] = useState(null)
+  const [botUsername, setBotUsername] = useState('')
   const [dragOver, setDragOver] = useState(false)
   const fileRef = useRef()
 
@@ -43,6 +44,14 @@ export default function AdminPanel({ config, setConfig }) {
     }).then(data => {
       if (data) setVoiceProfile(data)
     }).catch(() => {})
+  }, [])
+
+  // Fetch bot username for Connect Telegram button
+  useEffect(() => {
+    fetch('/api/config/bot-username')
+      .then(r => r.ok ? r.json() : { username: '' })
+      .then(d => setBotUsername(d.username || ''))
+      .catch(() => {})
   }, [])
 
   const saveConfig = async () => {
@@ -324,6 +333,25 @@ export default function AdminPanel({ config, setConfig }) {
             Get an extra Telegram ping for every escalation. Numeric chat ID works directly;
             <code> @username</code> only works after you've sent a message to the bot first.
             Leave blank to disable.
+          </div>
+          <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            {botUsername && (
+              <a
+                href={`https://t.me/${botUsername}?start=botid_${(form.bot_id || config?.bot_id || '')}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ display: 'inline-block', background: '#E8F5E9', color: '#2E7D32', border: '1px solid #A5D6A7', borderRadius: 6, padding: '6px 14px', fontSize: 13, fontWeight: 600, textDecoration: 'none', cursor: 'pointer' }}
+                onMouseEnter={e => e.currentTarget.style.background = '#C8E6C9'}
+                onMouseLeave={e => e.currentTarget.style.background = '#E8F5E9'}
+              >
+                🔗 Connect Telegram for alerts
+              </a>
+            )}
+            {form.telegram_handle && (
+              <span style={{ fontSize: 12, color: '#6B7280' }}>
+                ✅ ID: {form.telegram_handle}
+              </span>
+            )}
           </div>
         </div>
         <button className="btn btn-primary" onClick={saveConfig}>Save Configuration</button>

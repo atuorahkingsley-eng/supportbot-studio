@@ -12,6 +12,7 @@ from backend.routers import (
     visitors, sales, brand_voice, leads,
 )
 from backend.routers import auth_api, admin, health
+from backend.routers.telegram_webhook import router as telegram_webhook_router
 from backend.middleware.error_handler import ErrorHandlerMiddleware
 from backend.services.rate_limit import limiter, rate_limit_handler
 from backend.config import settings
@@ -197,6 +198,25 @@ async def lifespan(app: FastAPI):
     from backend.services.email_notify import configure_smtp_at_startup
     configure_smtp_at_startup()
 
+    # ── Register Telegram webhook ───────────────────────────────────────────────
+    if settings.telegram_bot_token:
+        import httpx
+        from backend.services.telegram_notify import get_bot_username
+
+        try:
+            bot_username = await get_bot_username()
+            webhook_url = f"{settings.app_url}/api/telegram/webhook"
+            params = f"?url={webhook_url}"
+            if settings.telegram_webhook_secret:
+                params += f"&secret_token={settings.telegram_webhook_secret}"
+            async with httpx.AsyncClient() as client:
+                await client.get(
+                    f"https://api.telegram.org/bot{settings.telegram_bot_token}/setWebhook{params}"
+                )
+            print(f"Telegram webhook registered for @{bot_username}")
+        except Exception as e:
+            print(f"Telegram webhook registration failed: {e}", file=sys.stderr)
+
     from backend.services.report_scheduler import scheduler
     from backend.config import settings
 
@@ -263,7 +283,7 @@ class TieredCORSMiddleware:
         "/api/escalate/public",
         "/api/sales/leads/capture/public",
     })
-    _PUBLIC_PREFIXES = ("/api/config/public/",)
+    _PUBLIC_PREFIXES = ("/api/config/public/", "/api/telegram/",)
 
     def __init__(self, app, app_url: str) -> None:
         self._public = CORSMiddleware(
@@ -312,6 +332,7 @@ app.include_router(visitors.router)       # /api/visitors
 app.include_router(sales.router)          # /api/sales
 app.include_router(brand_voice.router)    # /api/brand-voice
 app.include_router(leads.router)          # /api/leads
+app.include_router(telegram_webhook_router)  # /api/telegram
 
 
 # ── Serve widget.js ────────────────────────────────────────────────────────────

@@ -8,6 +8,7 @@ from typing import Optional
 from backend.database import get_db, BotConfig, Tenant
 from backend.services.auth import get_current_client
 from backend.services.rate_limit import limiter
+from backend.services.telegram_notify import get_bot_username
 
 router = APIRouter(prefix="/api/config", tags=["config"])
 
@@ -130,3 +131,14 @@ def update_config(
     db.commit()
     db.refresh(config)
     return config
+
+
+@router.get("/bot-username")
+async def get_telegram_bot_username():
+    """Return the Telegram bot username for the Connect button.
+
+    The admin panel uses this to build the deep-link URL
+    ``https://t.me/<username>?start=botid_<bot_id>``.
+    """
+    username = await get_bot_username()
+    return {"username": username}
