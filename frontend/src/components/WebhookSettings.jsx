@@ -202,6 +202,10 @@ export default function WebhookSettings() {
         credentials: 'include',
         body: JSON.stringify({ enabled: !wh.enabled }),
       })
+      if (!r.ok) {
+        addToast('Failed to update webhook', 'error')
+        return
+      }
       const updated = await r.json()
       setWebhooks(prev => prev.map(w => w.id === wh.id ? updated : w))
     } catch {
