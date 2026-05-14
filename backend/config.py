@@ -1,4 +1,3 @@
-import os
 import sys
 from pathlib import Path
 from dotenv import load_dotenv
@@ -76,8 +75,9 @@ DANGEROUS_DEFAULTS = {
 
 if not settings.skip_boot_guard:
     for key, default_val in DANGEROUS_DEFAULTS.items():
-        actual = os.getenv(key, "")
-        if not actual or actual == default_val:
+        attr = key.lower()
+        actual = getattr(settings, attr, None)
+        if not actual or str(actual) == str(default_val):
             print(f"STARTUP BLOCKED: {key} is missing or still set to default.", file=sys.stderr, flush=True)
             sys.exit(1)
 
