@@ -81,9 +81,16 @@ export default function EmbedChat() {
   const messagesEndRef = useRef(null)
   const recognitionRef = useRef(null)
   const silenceTimerRef = useRef(null)
-  const sendMessageRef = useRef(sendMessage)
+  // Initialised to null because `sendMessage` is declared further down — reading
+  // it here would be a TDZ access (white page on /embed/:botId). The effect
+  // below populates the ref after every render, so by the time `rec.onresult`
+  // fires it always holds the current closure.
+  const sendMessageRef = useRef(null)
 
-  useEffect(() => { sendMessageRef.current = sendMessage }, [sendMessage])
+  // Intentionally no dependency array: an explicit `[sendMessage]` array would
+  // be constructed at this line, which is *also* a TDZ access. Running on every
+  // render is fine — the body is a single ref assignment, cheap and idempotent.
+  useEffect(() => { sendMessageRef.current = sendMessage })
 
   const browserLang = navigator.language?.split('-')[0] || 'en'
 
