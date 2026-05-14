@@ -34,6 +34,7 @@ export default function LoginPage() {
         return
       }
       setUser({
+          ...data,
           role: 'client',
           bot_id: data.bot_id,
           company_name: data.company_name,
@@ -41,7 +42,6 @@ export default function LoginPage() {
           plan: data.plan ?? 'starter',
           messages_used: data.messages_used ?? 0,
           message_limit: data.monthly_message_limit ?? 500,
-          ...data,
       })
       navigate('/admin')
     } catch {
