@@ -39,6 +39,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    # Clear NULL emails before restoring NOT NULL constraint
+    op.execute("UPDATE leads SET email = '' WHERE email IS NULL")
+
     with op.batch_alter_table("leads") as batch_op:
         # Reversing the nullable change is best-effort: if rows with NULL email
         # exist at downgrade time, Postgres will reject the NOT NULL switch.
