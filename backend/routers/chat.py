@@ -655,7 +655,6 @@ async def rate_conversation(
     data: RateRequest,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    tenant: Tenant = Depends(get_current_client),
 ):
     """Public endpoint — no auth required, but the (session_id, bot_id) pair
     is verified before any write. Rate-limited because the success path
@@ -665,9 +664,17 @@ async def rate_conversation(
     # Per-(bot_id, ip) second-line rate limit — see public_chat.
     if not check_bot_id_rate_limit(data.bot_id, get_remote_address(request), max_per_minute=10):
         raise HTTPException(status_code=429, detail="Rate limit exceeded for this bot")
+
+    tenant = db.query(Tenant).filter(
+        Tenant.bot_id == data.bot_id,
+        Tenant.is_active == True,
+    ).first()
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Bot not found")
+
     convo = db.query(Conversation).filter(
         Conversation.session_id == data.session_id,
-        Conversation.bot_id == tenant.bot_id,
+        Conversation.bot_id == data.bot_id,
     ).first()
     if not convo:
         raise HTTPException(status_code=404, detail="Conversation not found")
