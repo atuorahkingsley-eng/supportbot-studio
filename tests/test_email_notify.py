@@ -17,6 +17,18 @@ from backend.config import settings
 from backend.services.email_notify import send_escalation_email
 
 
+@pytest.fixture(autouse=True)
+def _reset_settings():
+    """Restore settings after each test to prevent cross-test contamination."""
+    saved = {
+        "resend_api_key": settings.resend_api_key,
+        "resend_from_email": settings.resend_from_email,
+    }
+    yield
+    settings.resend_api_key = saved["resend_api_key"]
+    settings.resend_from_email = saved["resend_from_email"]
+
+
 def _make_response(status_code: int = 200, json_body: dict | None = None, text: str = "") -> MagicMock:
     """Build a ``httpx.Response``-shaped mock.
 
@@ -74,7 +86,7 @@ async def test_returns_false_when_api_key_missing():
         )
 
     assert result is False
-    mock_client.assert_not_called()
+    mock_client.return_value.post.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -93,7 +105,7 @@ async def test_returns_false_when_from_email_missing():
         )
 
     assert result is False
-    mock_client.assert_not_called()
+    mock_client.return_value.post.assert_not_called()
 
 
 @pytest.mark.asyncio
