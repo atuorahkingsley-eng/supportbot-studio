@@ -126,8 +126,10 @@ export default function EmbedChat() {
    * Without these FAQs, Claude hits needs_escalation too early.
    */
   const sendMessage = async (text, method = 'text') => {
-    if (!text.trim() || loading) return
+    if (loading) return
+    setLoading(true)
     const userMsg = text.trim()
+    if (!userMsg) { setLoading(false); return }
     setInput('')
 
     if (detectEscalationIntent(userMsg) && !escalationShown) {
@@ -135,12 +137,12 @@ export default function EmbedChat() {
       setLastUserMessage(userMsg)
       setMessages(prev => [...prev, { role: 'user', content: userMsg }, { role: 'assistant', content: 'Of course! Let me get someone for you right away.' }])
       setTimeout(() => setContactFormMode('escalation_urgent'), 200)
+      setLoading(false)
       return
     }
 
     setLastUserMessage(userMsg)
     setMessages(prev => [...prev, { role: 'user', content: userMsg }])
-    setLoading(true)
 
     try {
       const r = await fetch('/api/chat/public', {
@@ -230,6 +232,7 @@ export default function EmbedChat() {
 
   const handleEscalateSubmit = async (e) => {
     e.preventDefault()
+    if (!sessionId) return
     setEscalated(true)
     setContactFormMode(null)
     try {
@@ -244,16 +247,19 @@ export default function EmbedChat() {
           name: escName || null,
           email: escEmail || null,
           phone: escPhone || null,
-          reason: 'customer_requested',
+          reason: contactFormMode || 'customer_requested',
+          visitor_reason: escReason || null,
         }),
       })
       if (r.ok) {
         setMessages(prev => [...prev, { role: 'assistant', content: 'We\'ve notified our team. Someone will get back to you shortly.' }])
       }
     } catch { /* escalation queued fallback */ }
+    setEscReason('')
   }
 
   const handleEscalateSkip = async () => {
+    if (!sessionId) return
     setEscalated(true)
     setContactFormMode(null)
     try {
@@ -268,11 +274,13 @@ export default function EmbedChat() {
           name: null,
           email: null,
           phone: null,
-          reason: 'customer_requested',
+          reason: contactFormMode || 'customer_requested',
+          visitor_reason: escReason || null,
         }),
       })
       if (!r.ok) return
     } catch { /* escalation queued fallback */ }
+    setEscReason('')
   }
 
   if (!config) {
