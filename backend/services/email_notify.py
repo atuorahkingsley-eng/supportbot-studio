@@ -15,7 +15,7 @@ _smtp_port: int | None = None
 _smtp_use_ssl: bool = True
 
 
-def _probe_port(host: str, port: int, timeout: float = 3.0) -> bool:
+def _probe_port(host: str, port: int, timeout: float = 10.0) -> bool:
     """Check TCP reachability of host:port.
 
     Args:
