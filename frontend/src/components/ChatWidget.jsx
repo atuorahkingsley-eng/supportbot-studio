@@ -475,12 +475,12 @@ export default function ChatWidget({ config, botId }) {
   // the visitor shouldn't see "your request was received" only after the
   // round-trip; backend retry handles delivery failures via PendingEscalation.
   const handleEscalateSubmit = async (fields) => {
-    setShowEscalateForm(false)
-    setEscalated(true)
     if (!sessionId) {
       addToast('Unable to escalate — please try again in a moment.', 'error')
       return
     }
+    setShowEscalateForm(false)
+    setEscalated(true)
     setMessages(prev => [...prev, {
       role: 'assistant',
       content: 'Thanks! A team member will be in touch shortly.',
@@ -509,9 +509,9 @@ export default function ChatWidget({ config, botId }) {
   }
 
   const handleEscalateSkip = () => {
+    if (!sessionId) return
     setShowEscalateForm(false)
     setEscalated(true)
-    if (!sessionId) return
     setMessages(prev => [...prev, {
       role: 'assistant',
       content: 'No problem — feel free to keep chatting and a team member will join when available.',
