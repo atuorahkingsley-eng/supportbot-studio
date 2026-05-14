@@ -155,10 +155,13 @@ async def get_tenant_from_api_key(request: Request, db: Session = Depends(get_db
     """Authenticate via X-API-Key header (alternative to cookie auth)."""
     from backend.database import Tenant  # lazy import
 
-    api_key = (
-        request.headers.get("X-API-Key")
-        or request.headers.get("Authorization", "").replace("Bearer ", "")
-    )
+    api_key = request.headers.get("X-API-Key")
+    if not api_key:
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            api_key = auth_header[7:]
+        else:
+            api_key = auth_header
     if not api_key:
         raise HTTPException(status_code=401, detail="API key required")
 
