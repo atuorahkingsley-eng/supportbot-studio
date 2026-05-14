@@ -181,7 +181,7 @@ export default function EmbedChat() {
       }
 
       if (window.parent !== window) {
-        window.parent.postMessage('supportbot:notify', '*')
+        window.parent.postMessage('supportbot:notify', window.location.origin)
       }
     } catch {
       setMessages(prev => [...prev, { role: 'assistant', content: 'Sorry, something went wrong. Please try again.' }])
