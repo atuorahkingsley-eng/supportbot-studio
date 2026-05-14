@@ -2,7 +2,12 @@
   var script = document.currentScript;
   var botId = script.getAttribute('data-bot-id');
   var position = script.getAttribute('data-position') || 'right';
-  var baseUrl = script.src.replace('/widget.js', '');
+  var baseUrl = (function(src) {
+    var url = new URL(src, window.location.href);
+    url.pathname = url.pathname.replace(/\/widget\.js$/, '');
+    url.search = '';
+    return url.origin + url.pathname;
+  })(script.src);
 
   // Allowed origin for inbound postMessage events. Derived from the script
   // src so the same URL that serves widget.js (and the iframe) is the one
