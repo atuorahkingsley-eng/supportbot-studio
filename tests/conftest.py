@@ -64,10 +64,25 @@ import backend.main as main_module
 from backend.database import Base, BotConfig, SalesConfig, Tenant, get_db
 from backend.services.auth import create_token, hash_password
 from backend.services.rate_limit import limiter
+import backend.services.rate_limit as _rate_limit_module
 
 # Disable rate-limiting across the whole test session. slowapi reads
 # ``enabled`` on every check; flipping it once is the cheapest opt-out.
 limiter.enabled = False
+
+
+# ── Per-(bot_id, ip) bucket reset ──────────────────────────────────────────────
+# slowapi's `limiter.enabled = False` only kills the decorator-style limit.
+# The second-line check in chat/escalate/sales — ``check_bot_id_rate_limit`` —
+# uses its own module-level ``_buckets`` dict that the flag above doesn't
+# touch. Without resetting it, a test file that POSTs to /api/escalate/public
+# more than 5 times against the same bot_id starts seeing 429s on call #6.
+# Clear before every test so each test starts with a clean budget.
+@pytest.fixture(autouse=True)
+def _reset_bot_id_rate_limit_buckets():
+    _rate_limit_module._buckets.clear()
+    yield
+    _rate_limit_module._buckets.clear()
 
 
 # ── Engine + session fixtures ──────────────────────────────────────────────────

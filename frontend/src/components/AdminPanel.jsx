@@ -354,6 +354,26 @@ export default function AdminPanel({ config, setConfig }) {
             )}
           </div>
         </div>
+        {/* Custom Bot Instructions — free-text guidance appended to the
+            system prompt AFTER all platform rules. See ai_chat.py's
+            build_system_prompt > custom_block. Server caps at 2000 chars
+            (returns 422 if exceeded) and treats empty string as NULL. */}
+        <div style={{ marginBottom: 16 }}>
+          <label className="label">Custom Bot Instructions</label>
+          <textarea
+            className="input"
+            rows={5}
+            value={form.custom_instructions || ''}
+            onChange={e => setForm(prev => ({ ...prev, custom_instructions: e.target.value }))}
+            placeholder={`Optional: Add specific instructions for your bot.\n\nExamples:\n- Always mention our 30-day return policy\n- Never discuss competitor pricing\n- Always ask for order number before helping with order issues\n- Greet Yoruba speakers in Yoruba`}
+            maxLength={2000}
+            style={{ resize: 'vertical', fontFamily: 'inherit' }}
+          />
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
+            Added on top of default behaviour. Applied immediately on save.
+            {form.custom_instructions ? ` · ${form.custom_instructions.length} / 2000` : ''}
+          </div>
+        </div>
         <button className="btn btn-primary" onClick={saveConfig}>Save Configuration</button>
       </div>
 

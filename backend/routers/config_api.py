@@ -47,6 +47,32 @@ class BotConfigSchema(BaseModel):
     # touch DB). "" = explicit clear by the tenant. See database.py for
     # the @username-vs-numeric-id caveat.
     telegram_handle: Optional[str] = None
+    # Per-tenant free-text instructions appended to the system prompt AFTER
+    # all platform rules (see ai_chat.build_system_prompt's custom_block).
+    # Same Optional / "" → None semantics as telegram_handle above so an empty
+    # textarea clears the override on save. Validator caps length at 2000
+    # chars — mirrors _sanitize_custom_instructions in ai_chat.py so we 422
+    # at the boundary instead of silently truncating server-side. Whitespace
+    # is stripped before the empty-check so "   " also collapses to NULL.
+    custom_instructions: Optional[str] = None
+
+    @field_validator("custom_instructions", mode="before")
+    @classmethod
+    def _validate_custom_instructions(cls, v):
+        # None passes through unchanged so the PUT handler can use the
+        # "None = field missing from payload, don't touch DB" pattern that
+        # telegram_handle / greeting_message use — required for backward compat
+        # with clients that don't know about this field yet. "" is preserved
+        # (NOT collapsed to None here) so the PUT handler can distinguish
+        # "explicit clear" from "field missing", and itself maps "" -> NULL.
+        if v is None:
+            return None
+        if not isinstance(v, str):
+            raise ValueError("custom_instructions must be a string")
+        v = v.strip()
+        if len(v) > 2000:
+            raise ValueError("custom_instructions must be 2000 characters or fewer")
+        return v
 
 
 class BotConfigResponse(BotConfigSchema):
@@ -126,6 +152,12 @@ def update_config(
     if data.telegram_handle is not None:
         # "" -> NULL so empty form input clears the override cleanly.
         config.telegram_handle = data.telegram_handle or None
+    if data.custom_instructions is not None:
+        # "" -> NULL (tenant cleared the textarea). Non-empty string is
+        # stored as-is (already stripped + length-validated by the
+        # field_validator above). None on the request body means the client
+        # didn't send the field at all — don't touch the stored value.
+        config.custom_instructions = data.custom_instructions or None
     config.updated_at = datetime.now(timezone.utc)
 
     db.commit()

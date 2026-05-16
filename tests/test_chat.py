@@ -40,6 +40,10 @@ def _stub_ai_reply(text: str = "Hi there!"):
         "was_auto_reply": False,
         "detected_language": "en",
         "sales_meta": None,
+        # Matches the shape _get_ai_reply_with_fallback produces post-commit 2
+        # (chain-of-thought prompt upgrade). Default None — tests that exercise
+        # the escalation path override this explicitly with a reason dict.
+        "escalate_meta": None,
     }
 
 

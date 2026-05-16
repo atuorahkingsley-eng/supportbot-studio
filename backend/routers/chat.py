@@ -12,18 +12,9 @@ import structlog
 
 log = structlog.get_logger(__name__)
 
-# Canonical set of escalation reasons the prompt instructs Claude to choose
-# from (see ESCALATION RULES block in ai_chat.build_system_prompt). The router
-# validates ``escalate_meta.reason`` against this set and falls back to
-# "no_faq_answer" if Claude returns something off-spec or the tag is absent.
-_VALID_ESCALATION_REASONS = frozenset({
-    "explicit_request",
-    "frustration",
-    "urgency",
-    "sensitive_topic",
-    "unresolved_loop",
-    "no_faq_answer",
-})
+# Canonical escalation-reason vocabulary lives in ai_chat.VALID_ESCALATION_REASONS
+# (single source of truth — the same set the prompt instructs Claude to pick
+# from). Imported above; referenced directly below.
 
 from backend.database import (
     get_db, SessionLocal, Conversation, Message, FAQEntry, BotConfig,
@@ -31,7 +22,12 @@ from backend.database import (
     WebhookConfig, ErrorLog,
 )
 from backend.services.auto_reply import find_auto_reply
-from backend.services.ai_chat import get_ai_reply, generate_visitor_summary, build_system_prompt
+from backend.services.ai_chat import (
+    get_ai_reply,
+    generate_visitor_summary,
+    build_system_prompt,
+    VALID_ESCALATION_REASONS,
+)
 from backend.services.auth import get_current_client
 from backend.services.safe_executor import safe_execute
 from backend.services.rate_limit import limiter, check_bot_id_rate_limit
@@ -462,7 +458,7 @@ async def _process_chat(
                 escalate_meta = ai_result.get("escalate_meta")
                 if isinstance(escalate_meta, dict):
                     candidate = escalate_meta.get("reason")
-                    if isinstance(candidate, str) and candidate in _VALID_ESCALATION_REASONS:
+                    if isinstance(candidate, str) and candidate in VALID_ESCALATION_REASONS:
                         escalation_reason = candidate
                 if escalation_reason is None:
                     escalation_reason = "no_faq_answer"

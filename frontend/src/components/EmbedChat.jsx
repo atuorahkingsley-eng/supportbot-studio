@@ -75,6 +75,14 @@ export default function EmbedChat() {
   const [escEmail, setEscEmail] = useState('')
   const [escPhone, setEscPhone] = useState('')
   const [escReason, setEscReason] = useState('')
+  // AI-trigger-detail reason captured from the most recent chat response when
+  // the server flagged needs_escalation=true (one of ai_chat.VALID_ESCALATION_REASONS:
+  // explicit_request | frustration | urgency | sensitive_topic | unresolved_loop |
+  // no_faq_answer). Forwarded on the escalate POST body so the backend persists
+  // it on Lead.escalation_reason. Null when the visitor clicked the escalate
+  // button without an AI signal (e.g. typed "speak to a human" — caught by
+  // detectEscalationIntent above) — backend defaults to "customer_requested".
+  const [aiEscalationReason, setAiEscalationReason] = useState(null)
   const [voiceAvailable, setVoiceAvailable] = useState(false)
   const [listening, setListening] = useState(false)
   const [inputMethod, setInputMethod] = useState('text')
@@ -185,6 +193,12 @@ export default function EmbedChat() {
       } else if (data.needs_escalation && !escalated && !escalationShown) {
         setEscalationShown(true)
         setContactFormMode('escalation_soft')
+        // Capture the AI-trigger-detail reason for forwarding on the
+        // escalate POST below. Server only emits this when needs_escalation
+        // is true; falsy values stay null so the backend default kicks in.
+        if (data.escalation_reason) {
+          setAiEscalationReason(data.escalation_reason)
+        }
       }
 
       if (window.parent !== window) {
@@ -259,6 +273,10 @@ export default function EmbedChat() {
           phone: escPhone || null,
           reason: contactFormMode || 'customer_requested',
           visitor_reason: escReason || null,
+          // AI-trigger-detail reason from the chat response (when present).
+          // Backend validates against VALID_ESCALATION_REASONS and falls back
+          // to "customer_requested" when null/invalid — see escalate.py.
+          escalation_reason: aiEscalationReason,
         }),
       })
       if (r.ok) {
@@ -286,6 +304,8 @@ export default function EmbedChat() {
           phone: null,
           reason: contactFormMode || 'customer_requested',
           visitor_reason: escReason || null,
+          // See handleEscalateSubmit — same field, same validation contract.
+          escalation_reason: aiEscalationReason,
         }),
       })
       if (!r.ok) return

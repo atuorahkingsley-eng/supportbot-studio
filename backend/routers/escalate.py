@@ -13,6 +13,7 @@ from backend.database import (
     get_db, get_dialect, Conversation, Message, WebhookConfig, BotConfig, Tenant,
     PendingEscalation, ErrorLog, Lead, VisitorConversation,
 )
+from backend.services.ai_chat import VALID_ESCALATION_REASONS
 from backend.services.telegram_notify import send_telegram_message
 from backend.services.email_notify import send_escalation_email
 from backend.services.webhook_sender import dispatch_webhook
@@ -27,8 +28,16 @@ router = APIRouter(prefix="/api/escalate", tags=["escalate"])
 
 # Valid values for the structured payload's "reason" field. Kept as a tuple so
 # typo'd reasons surface at the call site instead of silently shipping garbage
-# to webhook receivers.
+# to webhook receivers. This is the SOURCE-axis vocabulary (who caused the
+# escalation). The ``reason`` field on each request schema is validated
+# against this set inside _do_escalate.
 _VALID_REASONS = ("customer_requested", "ai_escalated", "message_limit")
+
+# Default value written to Lead.escalation_reason when the widget escalates
+# directly (no AI chain-of-thought reason available). Lives in the source-axis
+# vocabulary above — Lead.escalation_reason persists values from EITHER
+# vocabulary depending on which flow created the row.
+_DEFAULT_LEAD_ESCALATION_REASON = "customer_requested"
 
 
 class EscalateRequest(BaseModel):
@@ -44,6 +53,14 @@ class EscalateRequest(BaseModel):
     email: Optional[str] = None
     phone: Optional[str] = None
     reason: Optional[str] = "customer_requested"
+    # AI-trigger-detail reason produced by Claude via the ESCALATE_META tag
+    # (see ai_chat.build_system_prompt + chat.py's _process_chat). Forwarded
+    # here by the embed widget after it observes ChatResponse.escalation_reason.
+    # Validated against ai_chat.VALID_ESCALATION_REASONS inside _do_escalate;
+    # anything off-spec collapses to "customer_requested" (= the widget-button
+    # default). Persisted on Lead.escalation_reason. Distinct field from
+    # ``reason`` above — the two vocabularies coexist deliberately.
+    escalation_reason: Optional[str] = None
 
 
 class PublicEscalateRequest(BaseModel):
@@ -55,6 +72,8 @@ class PublicEscalateRequest(BaseModel):
     email: Optional[str] = None
     phone: Optional[str] = None
     reason: Optional[str] = "customer_requested"
+    # See EscalateRequest.escalation_reason — same contract on the public route.
+    escalation_reason: Optional[str] = None
 
 
 def _log_notification_error(db: Session, bot_id: str, channel: str, error: Exception):
@@ -130,6 +149,7 @@ async def _do_escalate(
     email: Optional[str] = None,
     phone: Optional[str] = None,
     reason: Optional[str] = "customer_requested",
+    escalation_reason: Optional[str] = None,
 ) -> dict[str, Any]:
     """Shared escalation logic — fan out to telegram, email, and webhooks.
 
@@ -166,6 +186,11 @@ async def _do_escalate(
             Invalid values are normalised to "customer_requested" rather
             than rejected — we'd rather ship the escalation than 400 on
             a stale client.
+        escalation_reason: AI-trigger-detail reason from the chat router
+            (one of ai_chat.VALID_ESCALATION_REASONS — explicit_request,
+            frustration, urgency, sensitive_topic, unresolved_loop,
+            no_faq_answer). Validated and persisted to Lead.escalation_reason.
+            None / invalid → "customer_requested" (widget-button default).
 
     Returns:
         ``{"ok": True, "results": {<channel>: bool, ...}}`` when at least one
@@ -220,6 +245,16 @@ async def _do_escalate(
         name=name, email=effective_email, phone=phone,
     )
     normalised_reason = reason if reason in _VALID_REASONS else "customer_requested"
+
+    # Validate escalation_reason against the AI-trigger-detail vocabulary.
+    # Off-spec / missing → "customer_requested" (the widget-button default,
+    # NOT one of the six AI reasons — see _DEFAULT_LEAD_ESCALATION_REASON).
+    # Persisted on Lead.escalation_reason at the end of this function so the
+    # Leads dashboard can filter the unified table by reason.
+    if isinstance(escalation_reason, str) and escalation_reason in VALID_ESCALATION_REASONS:
+        lead_escalation_reason = escalation_reason
+    else:
+        lead_escalation_reason = _DEFAULT_LEAD_ESCALATION_REASON
 
     transcript_lines = []
     for msg in messages:
@@ -410,6 +445,7 @@ async def _do_escalate(
             conversation_id=convo.id,
             type="escalation",
             status="new",
+            escalation_reason=lead_escalation_reason,
         )
         db.add(escalation_lead)
         db.commit()
@@ -459,6 +495,7 @@ async def public_escalate(
         email=data.email,
         phone=data.phone,
         reason=data.reason,
+        escalation_reason=data.escalation_reason,
     )
 
 
@@ -479,4 +516,5 @@ async def escalate(
         email=data.email,
         phone=data.phone,
         reason=data.reason,
+        escalation_reason=data.escalation_reason,
     )

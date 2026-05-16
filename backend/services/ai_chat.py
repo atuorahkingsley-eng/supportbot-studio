@@ -11,6 +11,29 @@ from backend.services.brand_voice_analyzer import render_voice_block
 log = structlog.get_logger(__name__)
 
 
+# Canonical set of escalation reasons. This is the AI-trigger-detail
+# vocabulary that the prompt (build_system_prompt > ESCALATION RULES block)
+# instructs Claude to pick from when it emits the ESCALATE_META sidecar tag.
+# Exported as a public constant so backend/routers/chat.py and
+# backend/routers/escalate.py can validate inbound values against the exact
+# same set — single source of truth, no drift between prompt and router.
+#
+# NOTE: This is intentionally distinct from escalate.py's _VALID_REASONS
+# tuple ("customer_requested" | "ai_escalated" | "message_limit"), which is
+# a SOURCE-axis vocabulary (who/what caused the escalation, used in webhook
+# payload metadata). The Lead.escalation_reason column persists values from
+# whichever vocabulary applies — AI flow writes one of the six values below,
+# direct widget-button flow writes "customer_requested".
+VALID_ESCALATION_REASONS = frozenset({
+    "explicit_request",
+    "frustration",
+    "urgency",
+    "sensitive_topic",
+    "unresolved_loop",
+    "no_faq_answer",
+})
+
+
 # ── Anthropic client (module-level, reused) ───────────────────────────────────
 # One client per process. Per-call construction with no timeout was the bug:
 # a hung Anthropic request would pin a worker indefinitely. timeout=30.0 caps
