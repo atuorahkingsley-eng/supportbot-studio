@@ -453,12 +453,25 @@ if os.path.isdir(frontend_dist):
 
     @app.get("/{full_path:path}")
     async def serve_frontend(full_path: str):
-        # Don't intercept API routes or widget.js
+        # Don't intercept API routes or routes with their own dedicated handler
+        # earlier in this module (widget.js, /demo, /demo.html).
         if (full_path.startswith("api/")
                 or full_path == "widget.js"
                 or full_path == "demo"
                 or full_path == "demo.html"):
             from fastapi import HTTPException as FE
             raise FE(status_code=404)
+        # Root-level static files Vite copied from frontend/public/ (favicons,
+        # robots.txt, etc.). Must be served BEFORE the SPA fallback — otherwise
+        # /favicon.ico would return index.html and the browser would try to
+        # parse HTML as an image. This effectively excludes favicon.ico (and
+        # any future public/ file) from the SPA catch-all.
+        # Single-segment + no-traversal filter keeps this from doubling as a
+        # directory-traversal vector (single-segment names can't escape via /,
+        # and explicit ``..`` is rejected even though FastAPI normalises).
+        if full_path and "/" not in full_path and ".." not in full_path:
+            candidate = os.path.join(frontend_dist, full_path)
+            if os.path.isfile(candidate):
+                return FileResponse(candidate)
         index = os.path.join(frontend_dist, "index.html")
         return FileResponse(index)
