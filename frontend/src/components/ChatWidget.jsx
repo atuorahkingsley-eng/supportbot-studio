@@ -393,7 +393,13 @@ export default function ChatWidget({ config, botId }) {
       recognitionRef.current = recognition
     }
 
-    return () => clearTimeout(silenceTimerRef.current)
+    return () => {
+      clearTimeout(silenceTimerRef.current)
+      if (recognitionRef.current) {
+        recognitionRef.current.stop()
+        recognitionRef.current = null
+      }
+    }
   }, [])
 
   // Phase 4: Toggle voice listening
