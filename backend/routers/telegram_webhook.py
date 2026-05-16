@@ -12,6 +12,8 @@ carry a ``secret_token`` that we verify against
 knows the Render URL could forge updates, but the only damage is a bogus
 chat ID being stored (no data exfiltration).
 """
+import structlog
+
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
@@ -19,6 +21,8 @@ from sqlalchemy.orm import Session
 from backend.config import settings
 from backend.database import get_db, BotConfig
 from backend.services.telegram_notify import send_telegram_message
+
+log = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/api/telegram", tags=["telegram"])
 
@@ -43,17 +47,21 @@ async def telegram_webhook(request: Request, db: Session = Depends(get_db)):
     chat = message.get("chat", {})
     chat_id = str(chat.get("id", ""))
 
-    if text.startswith("/start botid_"):
+    if text.startswith("/start botid_") and chat_id:
         bot_id = text.split("botid_", 1)[1].strip()
         config = db.query(BotConfig).filter(BotConfig.bot_id == bot_id).first()
         if config:
             config.telegram_handle = chat_id
             db.commit()
-
-    if chat_id:
-        await send_telegram_message(
-            "✅ Connected! Escalations will be sent here.",
-            chat_id_override=chat_id,
-        )
+            await send_telegram_message(
+                "✅ Connected! Escalations will be sent here.",
+                chat_id_override=chat_id,
+            )
+        else:
+            await send_telegram_message(
+                "❌ Bot ID not recognised. Please check your bot ID and try again.",
+                chat_id_override=chat_id,
+            )
+            log.warning("telegram_connect_unknown_bot", bot_id=bot_id, chat_id=chat_id)
 
     return {"ok": True}
