@@ -184,7 +184,10 @@ def update_config(
 
 
 @router.get("/bot-username")
-async def get_telegram_bot_username():
+async def get_telegram_bot_username(
+    db: Session = Depends(get_db),
+    tenant: Tenant = Depends(get_current_client),
+):
     """Return the Telegram bot username for the Connect button.
 
     The admin panel uses this to build the deep-link URL
