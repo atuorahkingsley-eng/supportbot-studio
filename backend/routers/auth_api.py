@@ -124,7 +124,6 @@ def client_login(request: Request, data: ClientLoginRequest, response: Response,
     candidate = tenant.password_hash if tenant else _DUMMY_HASH
     if not verify_password(data.password, candidate) or not tenant:
         raise HTTPException(status_code=401, detail="Invalid credentials")
-        raise HTTPException(status_code=401, detail="Invalid credentials")
     if not tenant.is_active:
         raise HTTPException(status_code=403, detail="Account is inactive")
 
