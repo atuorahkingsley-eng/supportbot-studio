@@ -78,6 +78,11 @@ def _log_daily_usage() -> None:
         insert_fn = pg_insert
     elif dialect == "sqlite":
         insert_fn = sqlite_insert
+    else:
+        raise RuntimeError(
+            f"Unsupported dialect: {dialect}. "
+            "SupportBot supports PostgreSQL and SQLite only."
+        )
 
     today = date.today()
 
@@ -370,6 +375,8 @@ async def serve_demo():
 @app.get("/demo.html")
 async def serve_demo_html():
     demo_path = os.path.join(_static_dir, "demo.html")
+    if not os.path.exists(demo_path):
+        return Response("Demo page not found", media_type="text/plain", status_code=404)
     return FileResponse(
         demo_path,
         media_type="text/html",
