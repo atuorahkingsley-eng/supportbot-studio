@@ -25,6 +25,7 @@ from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.engine import reflection
 
 
 # revision identifiers, used by Alembic.
@@ -35,12 +36,24 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    """Add HMAC secret + JSON events list to webhook_configs."""
-    op.add_column('webhook_configs', sa.Column('secret', sa.String(), nullable=True))
-    op.add_column('webhook_configs', sa.Column('events', sa.Text(), nullable=True))
+    """Add HMAC secret + JSON events list to webhook_configs if not already present."""
+    bind = op.get_bind()
+    inspector = reflection.Inspector.from_engine(bind)
+    cols = {c['name'] for c in inspector.get_columns('webhook_configs')}
+
+    if 'secret' not in cols:
+        op.add_column('webhook_configs', sa.Column('secret', sa.String(), nullable=True))
+    if 'events' not in cols:
+        op.add_column('webhook_configs', sa.Column('events', sa.Text(), nullable=True))
 
 
 def downgrade() -> None:
     """Reverse the additive change."""
-    op.drop_column('webhook_configs', 'events')
-    op.drop_column('webhook_configs', 'secret')
+    bind = op.get_bind()
+    inspector = reflection.Inspector.from_engine(bind)
+    cols = {c['name'] for c in inspector.get_columns('webhook_configs')}
+
+    if 'events' in cols:
+        op.drop_column('webhook_configs', 'events')
+    if 'secret' in cols:
+        op.drop_column('webhook_configs', 'secret')

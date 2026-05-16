@@ -20,6 +20,7 @@ from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.engine import reflection
 
 
 revision: str = 'a1b2c3d4e5f6'
@@ -29,12 +30,43 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    with op.batch_alter_table("pending_escalations") as batch_op:
-        batch_op.create_unique_constraint(
-            "uq_pending_esc_bot_session", ["bot_id", "session_id"]
-        )
+    bind = op.get_bind()
+    if bind.dialect.name == "postgresql":
+        op.execute("""
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM pg_constraint
+                    WHERE conname = 'uq_pending_esc_bot_session'
+                ) THEN
+                    ALTER TABLE pending_escalations
+                    ADD CONSTRAINT uq_pending_esc_bot_session
+                    UNIQUE (bot_id, session_id);
+                END IF;
+            END $$;
+        """)
+    else:
+        with op.batch_alter_table("pending_escalations") as batch_op:
+            try:
+                batch_op.create_unique_constraint(
+                    "uq_pending_esc_bot_session", ["bot_id", "session_id"]
+                )
+            except Exception:
+                pass
 
 
 def downgrade() -> None:
-    with op.batch_alter_table("pending_escalations") as batch_op:
-        batch_op.drop_constraint("uq_pending_esc_bot_session", type_="unique")
+    bind = op.get_bind()
+    if bind.dialect.name == "postgresql":
+        op.execute(
+            "ALTER TABLE pending_escalations "
+            "DROP CONSTRAINT IF EXISTS uq_pending_esc_bot_session"
+        )
+    else:
+        with op.batch_alter_table("pending_escalations") as batch_op:
+            try:
+                batch_op.drop_constraint(
+                    "uq_pending_esc_bot_session", type_="unique"
+                )
+            except Exception:
+                pass

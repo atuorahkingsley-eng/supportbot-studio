@@ -16,6 +16,7 @@ from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.engine import reflection
 
 
 # revision identifiers, used by Alembic.
@@ -26,27 +27,41 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    """Create brand_voices table."""
-    op.create_table(
-        'brand_voices',
-        sa.Column('id', sa.Integer(), primary_key=True),
-        sa.Column('bot_id', sa.String(), nullable=False),
-        sa.Column('tone', sa.String(), nullable=True),
-        sa.Column('vocabulary', sa.Text(), nullable=True),
-        sa.Column('personality_traits', sa.Text(), nullable=True),
-        sa.Column('avoid', sa.Text(), nullable=True),
-        sa.Column('raw_samples', sa.Text(), nullable=True),
-        sa.Column('is_active', sa.Boolean(), nullable=False, server_default=sa.false()),
-        sa.Column('generated_at', sa.DateTime(), nullable=True),
-        sa.Column('updated_at', sa.DateTime(), nullable=True),
-        sa.UniqueConstraint('bot_id', name='uq_brand_voice_bot'),
+    """Create brand_voices table if not already present."""
+    bind = op.get_bind()
+    inspector = reflection.Inspector.from_engine(bind)
+    tables = set(inspector.get_table_names())
+
+    if 'brand_voices' not in tables:
+        op.create_table(
+            'brand_voices',
+            sa.Column('id', sa.Integer(), primary_key=True),
+            sa.Column('bot_id', sa.String(), nullable=False),
+            sa.Column('tone', sa.String(), nullable=True),
+            sa.Column('vocabulary', sa.Text(), nullable=True),
+            sa.Column('personality_traits', sa.Text(), nullable=True),
+            sa.Column('avoid', sa.Text(), nullable=True),
+            sa.Column('raw_samples', sa.Text(), nullable=True),
+            sa.Column('is_active', sa.Boolean(), nullable=False, server_default=sa.false()),
+            sa.Column('generated_at', sa.DateTime(), nullable=True),
+            sa.Column('updated_at', sa.DateTime(), nullable=True),
+            sa.UniqueConstraint('bot_id', name='uq_brand_voice_bot'),
+        )
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_brand_voices_id "
+        "ON brand_voices (id)"
     )
-    op.create_index('ix_brand_voices_id', 'brand_voices', ['id'], unique=False)
-    op.create_index('ix_brand_voices_bot_id', 'brand_voices', ['bot_id'], unique=False)
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_brand_voices_bot_id "
+        "ON brand_voices (bot_id)"
+    )
 
 
 def downgrade() -> None:
-    """Drop brand_voices table."""
-    op.drop_index('ix_brand_voices_bot_id', table_name='brand_voices')
-    op.drop_index('ix_brand_voices_id', table_name='brand_voices')
-    op.drop_table('brand_voices')
+    """Drop brand_voices table if present."""
+    bind = op.get_bind()
+    inspector = reflection.Inspector.from_engine(bind)
+    tables = set(inspector.get_table_names())
+
+    if 'brand_voices' in tables:
+        op.drop_table('brand_voices')

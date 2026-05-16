@@ -18,6 +18,7 @@ from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.engine import reflection
 
 
 # revision identifiers, used by Alembic.
@@ -28,18 +29,30 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    """Create revoked_tokens table."""
-    op.create_table(
-        'revoked_tokens',
-        sa.Column('id', sa.Integer(), primary_key=True),
-        sa.Column('jti', sa.String(), nullable=False),
-        sa.Column('revoked_at', sa.DateTime(), nullable=False),
-        sa.UniqueConstraint('jti', name='uq_revoked_tokens_jti'),
+    """Create revoked_tokens table if not already present."""
+    bind = op.get_bind()
+    inspector = reflection.Inspector.from_engine(bind)
+    tables = set(inspector.get_table_names())
+
+    if 'revoked_tokens' not in tables:
+        op.create_table(
+            'revoked_tokens',
+            sa.Column('id', sa.Integer(), primary_key=True),
+            sa.Column('jti', sa.String(), nullable=False),
+            sa.Column('revoked_at', sa.DateTime(), nullable=False),
+            sa.UniqueConstraint('jti', name='uq_revoked_tokens_jti'),
+        )
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_revoked_tokens_jti "
+        "ON revoked_tokens (jti)"
     )
-    op.create_index('ix_revoked_tokens_jti', 'revoked_tokens', ['jti'])
 
 
 def downgrade() -> None:
-    """Drop revoked_tokens table."""
-    op.drop_index('ix_revoked_tokens_jti', table_name='revoked_tokens')
-    op.drop_table('revoked_tokens')
+    """Drop revoked_tokens table if present."""
+    bind = op.get_bind()
+    inspector = reflection.Inspector.from_engine(bind)
+    tables = set(inspector.get_table_names())
+
+    if 'revoked_tokens' in tables:
+        op.drop_table('revoked_tokens')

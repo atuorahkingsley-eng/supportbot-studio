@@ -12,6 +12,7 @@ from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.engine import reflection
 
 
 revision: str = "a0b1c2d3e4f5"
@@ -21,8 +22,18 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column("revoked_tokens", sa.Column("expires_at", sa.DateTime(), nullable=True))
+    bind = op.get_bind()
+    inspector = reflection.Inspector.from_engine(bind)
+    cols = {c['name'] for c in inspector.get_columns('revoked_tokens')}
+
+    if 'expires_at' not in cols:
+        op.add_column("revoked_tokens", sa.Column("expires_at", sa.DateTime(), nullable=True))
 
 
 def downgrade() -> None:
-    op.drop_column("revoked_tokens", "expires_at")
+    bind = op.get_bind()
+    inspector = reflection.Inspector.from_engine(bind)
+    cols = {c['name'] for c in inspector.get_columns('revoked_tokens')}
+
+    if 'expires_at' in cols:
+        op.drop_column("revoked_tokens", "expires_at")

@@ -16,6 +16,7 @@ from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.engine import reflection
 
 
 # revision identifiers, used by Alembic.
@@ -26,13 +27,23 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    """Add telegram_handle to bot_config."""
-    op.add_column(
-        'bot_config',
-        sa.Column('telegram_handle', sa.String(), nullable=True),
-    )
+    """Add telegram_handle to bot_config if not already present."""
+    bind = op.get_bind()
+    inspector = reflection.Inspector.from_engine(bind)
+    cols = {c['name'] for c in inspector.get_columns('bot_config')}
+
+    if 'telegram_handle' not in cols:
+        op.add_column(
+            'bot_config',
+            sa.Column('telegram_handle', sa.String(), nullable=True),
+        )
 
 
 def downgrade() -> None:
-    """Drop telegram_handle from bot_config."""
-    op.drop_column('bot_config', 'telegram_handle')
+    """Drop telegram_handle from bot_config if present."""
+    bind = op.get_bind()
+    inspector = reflection.Inspector.from_engine(bind)
+    cols = {c['name'] for c in inspector.get_columns('bot_config')}
+
+    if 'telegram_handle' in cols:
+        op.drop_column('bot_config', 'telegram_handle')

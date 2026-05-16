@@ -14,6 +14,7 @@ from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.engine import reflection
 
 
 revision: str = "f7e8d9c0b1a2"
@@ -23,33 +24,39 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.create_table(
-        "usage_alerts",
-        sa.Column("id", sa.Integer(), nullable=False),
-        sa.Column("bot_id", sa.String(), nullable=False),
-        sa.Column("month", sa.String(), nullable=False),
-        sa.Column("threshold", sa.String(), nullable=False),
-        sa.Column("sent_at", sa.DateTime(), nullable=True),
-        sa.ForeignKeyConstraint(
-            ["bot_id"],
-            ["tenants.bot_id"],
-            ondelete="CASCADE",
-        ),
-        sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint(
-            "bot_id", "month", "threshold",
-            name="uq_usage_alert_bot_month_threshold",
-        ),
-    )
-    op.create_index(
-        op.f("ix_usage_alerts_bot_id"),
-        "usage_alerts", ["bot_id"],
+    bind = op.get_bind()
+    inspector = reflection.Inspector.from_engine(bind)
+    tables = set(inspector.get_table_names())
+
+    if 'usage_alerts' not in tables:
+        op.create_table(
+            "usage_alerts",
+            sa.Column("id", sa.Integer(), nullable=False),
+            sa.Column("bot_id", sa.String(), nullable=False),
+            sa.Column("month", sa.String(), nullable=False),
+            sa.Column("threshold", sa.String(), nullable=False),
+            sa.Column("sent_at", sa.DateTime(), nullable=True),
+            sa.ForeignKeyConstraint(
+                ["bot_id"],
+                ["tenants.bot_id"],
+                ondelete="CASCADE",
+            ),
+            sa.PrimaryKeyConstraint("id"),
+            sa.UniqueConstraint(
+                "bot_id", "month", "threshold",
+                name="uq_usage_alert_bot_month_threshold",
+            ),
+        )
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_usage_alerts_bot_id "
+        "ON usage_alerts (bot_id)"
     )
 
 
 def downgrade() -> None:
-    op.drop_index(
-        op.f("ix_usage_alerts_bot_id"),
-        table_name="usage_alerts",
-    )
-    op.drop_table("usage_alerts")
+    bind = op.get_bind()
+    inspector = reflection.Inspector.from_engine(bind)
+    tables = set(inspector.get_table_names())
+
+    if 'usage_alerts' in tables:
+        op.drop_table("usage_alerts")

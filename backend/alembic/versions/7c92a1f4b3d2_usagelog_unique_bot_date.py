@@ -23,6 +23,7 @@ from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.engine import reflection
 
 
 revision: str = '7c92a1f4b3d2'
@@ -54,10 +55,29 @@ def upgrade() -> None:
         )
     """))
 
-    with op.batch_alter_table("usage_logs") as batch_op:
-        batch_op.create_unique_constraint(
-            "uq_usagelog_bot_date", ["bot_id", "date"]
-        )
+    bind = op.get_bind()
+    if bind.dialect.name == "postgresql":
+        op.execute("""
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM pg_constraint
+                    WHERE conname = 'uq_usagelog_bot_date'
+                ) THEN
+                    ALTER TABLE usage_logs
+                    ADD CONSTRAINT uq_usagelog_bot_date
+                    UNIQUE (bot_id, date);
+                END IF;
+            END $$;
+        """)
+    else:
+        with op.batch_alter_table("usage_logs") as batch_op:
+            try:
+                batch_op.create_unique_constraint(
+                    "uq_usagelog_bot_date", ["bot_id", "date"]
+                )
+            except Exception:
+                pass
 
 
 def downgrade() -> None:
