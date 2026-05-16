@@ -2,7 +2,7 @@ import re
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, ConfigDict, field_validator
 from typing import Optional
 
 from backend.database import get_db, BotConfig, Tenant
@@ -22,32 +22,55 @@ _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
 class BotConfigSchema(BaseModel):
+    """Base config schema — no field validators. Used for reading existing data.
+
+    Intentionally does NOT validate ``brand_color`` format because existing
+    DB values may have been saved before validation existed. The write-only
+    subclass ``BotConfigUpdateSchema`` adds validation + auto-fix.
+    """
     business_name: str
     agent_name: str
-    brand_color: str
+    brand_color: Optional[str] = None
+    welcome_message: Optional[str] = None
+    escalation_email: Optional[str] = None
+    voice_enabled: bool = False
+    greeting_message: Optional[str] = None
+    telegram_handle: Optional[str] = None
+    custom_instructions: Optional[str] = None
 
-    @field_validator("brand_color")
+    model_config = ConfigDict(from_attributes=True)
+
+
+class BotConfigUpdateSchema(BotConfigSchema):
+    """Schema for writing config — adds validation + auto-fix for brand_color."""
+
+    @field_validator("brand_color", mode="before")
     @classmethod
-    def validate_hex_color(cls, v: str) -> str:
-        """Validate brand_color is a 6-digit hex color code.
+    def validate_hex_color(cls, v: str | None) -> str | None:
+        """Validate brand_color is a 6-digit hex color on write.
+
+        Auto-fixes: if ``v`` is 6 hex digits without ``#``, prepends it.
+        This heals existing DB values on next save.
 
         Args:
-            v: Color string to validate.
+            v: Color value being written.
 
         Returns:
-            Validated color string.
+            Validated color with ``#`` prefix, or ``None``.
 
         Raises:
-            ValueError: If not a valid hex color.
+            ValueError: If not a valid hex color format.
         """
-        if v and not re.match(r'^#[0-9a-fA-F]{6}$', v):
-            raise ValueError("brand_color must be a valid hex color e.g. #6366F1")
-        return v
-    welcome_message: str
-    # Optional + format-validated. "" / None / missing all coerce to None so
-    # an empty form input doesn't 422 the save.
-    escalation_email: Optional[str] = None
-    voice_enabled: bool = True
+        if not v:
+            return v
+        s = v.strip()
+        # 6 hex digits without # → auto-fix
+        if re.match(r'^[0-9a-fA-F]{6}$', s):
+            return f'#{s.upper()}'
+        # Full format with #
+        if re.match(r'^#[0-9a-fA-F]{6}$', s):
+            return s.upper()
+        raise ValueError("brand_color must be a 6-digit hex color e.g. #6366F1")
 
     @field_validator("escalation_email", mode="before")
     @classmethod
@@ -57,32 +80,10 @@ class BotConfigSchema(BaseModel):
         if not isinstance(v, str) or not _EMAIL_RE.match(v):
             raise ValueError("Invalid email address")
         return v
-    # Optional so older clients that don't send the field don't wipe the
-    # stored value on save. The widget falls back to its own default if
-    # this is empty / null.
-    greeting_message: Optional[str] = None
-    # Per-tenant Telegram chat target. None = field not in payload (don't
-    # touch DB). "" = explicit clear by the tenant. See database.py for
-    # the @username-vs-numeric-id caveat.
-    telegram_handle: Optional[str] = None
-    # Per-tenant free-text instructions appended to the system prompt AFTER
-    # all platform rules (see ai_chat.build_system_prompt's custom_block).
-    # Same Optional / "" → None semantics as telegram_handle above so an empty
-    # textarea clears the override on save. Validator caps length at 2000
-    # chars — mirrors _sanitize_custom_instructions in ai_chat.py so we 422
-    # at the boundary instead of silently truncating server-side. Whitespace
-    # is stripped before the empty-check so "   " also collapses to NULL.
-    custom_instructions: Optional[str] = None
 
     @field_validator("custom_instructions", mode="before")
     @classmethod
     def _validate_custom_instructions(cls, v):
-        # None passes through unchanged so the PUT handler can use the
-        # "None = field missing from payload, don't touch DB" pattern that
-        # telegram_handle / greeting_message use — required for backward compat
-        # with clients that don't know about this field yet. "" is preserved
-        # (NOT collapsed to None here) so the PUT handler can distinguish
-        # "explicit clear" from "field missing", and itself maps "" -> NULL.
         if v is None:
             return None
         if not isinstance(v, str):
@@ -97,9 +98,6 @@ class BotConfigResponse(BotConfigSchema):
     id: int
     created_at: datetime
     updated_at: datetime
-
-    class Config:
-        from_attributes = True
 
 
 # ── Public endpoint (no auth — for embed widget) ───────────────────────────────
@@ -148,7 +146,7 @@ def get_config(
 
 @router.put("", response_model=BotConfigResponse)
 def update_config(
-    data: BotConfigSchema,
+    data: BotConfigUpdateSchema,
     db: Session = Depends(get_db),
     tenant: Tenant = Depends(get_current_client),
 ):
