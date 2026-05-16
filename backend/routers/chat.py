@@ -8,6 +8,23 @@ from sqlalchemy.exc import IntegrityError
 from pydantic import BaseModel
 from typing import Optional, Any
 
+import structlog
+
+log = structlog.get_logger(__name__)
+
+# Canonical set of escalation reasons the prompt instructs Claude to choose
+# from (see ESCALATION RULES block in ai_chat.build_system_prompt). The router
+# validates ``escalate_meta.reason`` against this set and falls back to
+# "no_faq_answer" if Claude returns something off-spec or the tag is absent.
+_VALID_ESCALATION_REASONS = frozenset({
+    "explicit_request",
+    "frustration",
+    "urgency",
+    "sensitive_topic",
+    "unresolved_loop",
+    "no_faq_answer",
+})
+
 from backend.database import (
     get_db, SessionLocal, Conversation, Message, FAQEntry, BotConfig,
     Visitor, VisitorConversation, SalesConfig, Tenant, BrandVoice,
@@ -60,6 +77,11 @@ class ChatResponse(BaseModel):
     # details is never asked again in the same conversation. Server is the
     # source of truth — client-side React state alone is wiped on reload.
     already_escalated: bool = False
+    # Why the bot escalated this turn — one of the six canonical reasons in
+    # _VALID_ESCALATION_REASONS. Set only when needs_escalation=True (the
+    # EmbedChat widget reads this and forwards it on the /api/escalate POST
+    # body, where it is persisted as Lead.escalation_reason). None otherwise.
+    escalation_reason: Optional[str] = None
 
 
 class RateRequest(BaseModel):
@@ -314,6 +336,7 @@ async def _get_ai_reply_with_fallback(
             "was_auto_reply": True,
             "detected_language": None,
             "sales_meta": None,
+            "escalate_meta": None,
         }
 
     # 3. Final fallback — always works
@@ -328,6 +351,7 @@ async def _get_ai_reply_with_fallback(
         "was_auto_reply": True,
         "detected_language": None,
         "sales_meta": None,
+        "escalate_meta": None,
     }
 
 
@@ -391,6 +415,7 @@ async def _process_chat(
     needs_escalation = False
     detected_language = None
     sales_action = None
+    escalation_reason: Optional[str] = None
 
     if auto_reply:
         reply = auto_reply
@@ -427,6 +452,27 @@ async def _process_chat(
             if "ESCALATE" in reply:
                 needs_escalation = True
                 reply = reply.replace("ESCALATE", "").strip()
+                # Determine the escalation_reason. Claude is instructed (see
+                # ESCALATION RULES in build_system_prompt) to emit an
+                # ESCALATE_META:{"reason":"..."} tag on every escalation. We
+                # validate the value against the canonical set — anything
+                # off-spec, malformed, or missing falls back to "no_faq_answer"
+                # so the Leads dashboard always has a non-null reason to filter
+                # on. parse_metadata() already stripped the tag from `reply`.
+                escalate_meta = ai_result.get("escalate_meta")
+                if isinstance(escalate_meta, dict):
+                    candidate = escalate_meta.get("reason")
+                    if isinstance(candidate, str) and candidate in _VALID_ESCALATION_REASONS:
+                        escalation_reason = candidate
+                if escalation_reason is None:
+                    escalation_reason = "no_faq_answer"
+                log.info(
+                    "chat_escalation",
+                    bot_id=bot_id,
+                    session_id=session_id,
+                    reason=escalation_reason,
+                    had_meta_tag=isinstance(escalate_meta, dict) and bool(escalate_meta.get("reason")),
+                )
 
             sales_meta = ai_result.get("sales_meta")
             if sales_meta:
@@ -476,6 +522,9 @@ async def _process_chat(
     already_escalated = bool(convo.escalated)
     if already_escalated:
         needs_escalation = False
+        # Drop the reason too: it travels with needs_escalation and the
+        # widget's escalate POST only fires when needs_escalation is True.
+        escalation_reason = None
 
     return ChatResponse(
         reply=reply,
@@ -487,6 +536,7 @@ async def _process_chat(
         detected_language=detected_language,
         sales_action=sales_action,
         already_escalated=already_escalated,
+        escalation_reason=escalation_reason,
     )
 
 
