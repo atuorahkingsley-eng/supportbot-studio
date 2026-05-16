@@ -757,8 +757,13 @@ export default function SuperAdmin() {
   }
 
   const handleLogout = async () => {
-    await logout()
-    navigate('/login')
+    try {
+      await logout()
+    } catch (err) {
+      console.error('Logout error:', err)
+    } finally {
+      navigate('/login')
+    }
   }
 
   return <SuperAdminDashboard onLogout={handleLogout} />
