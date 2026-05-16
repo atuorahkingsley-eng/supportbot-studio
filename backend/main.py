@@ -45,15 +45,42 @@ def _setup_super_admin():
 
 def _reset_monthly_counts():
     """APScheduler job: reset all tenants' message counts on 1st of month."""
-    from backend.database import Tenant
+    from backend.database import Tenant, RevokedToken
+    from datetime import datetime, timezone
     from backend.services.usage_alerts import prune_old_alerts
 
     db = SessionLocal()
     try:
         db.query(Tenant).update({Tenant.messages_used_this_month: 0})
+        # Clean up expired revoked tokens
+        db.query(RevokedToken).filter(
+            RevokedToken.expires_at < datetime.now(timezone.utc)
+        ).delete()
         db.commit()
         prune_old_alerts(db)
         print("Monthly message counts reset for all tenants.")
+    finally:
+        db.close()
+
+
+def _enforce_data_retention():
+    """APScheduler job: delete conversations older than 365 days.
+
+    Runs weekly. Respects GDPR right to erasure by removing
+    stale personal data from the database.
+    """
+    from datetime import datetime, timezone, timedelta
+    from backend.database import Conversation
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=365)
+    db = SessionLocal()
+    try:
+        deleted = db.query(Conversation).filter(
+            Conversation.created_at < cutoff
+        ).delete()
+        db.commit()
+        if deleted:
+            print(f"Data retention enforced: {deleted} old conversations deleted.")
     finally:
         db.close()
 
@@ -255,6 +282,12 @@ async def lifespan(app: FastAPI):
         _retry_pending_escalations, "interval",
         minutes=5,
         id="retry_escalations", replace_existing=True,
+    )
+    # Weekly data retention (GDPR — deletes conversations >365 days)
+    scheduler.add_job(
+        _enforce_data_retention, "interval",
+        days=7,
+        id="data_retention", replace_existing=True,
     )
 
     yield

@@ -4,7 +4,7 @@ All endpoints require super admin authentication.
 """
 import os
 from datetime import datetime, date, timedelta, timezone
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
@@ -13,11 +13,15 @@ from typing import Optional, List
 
 from backend.database import (
     get_db, get_dialect, Tenant, SuperAdmin, BotConfig, FAQEntry, Conversation,
-    Message, Lead, UsageLog, ErrorLog, generate_bot_id, generate_api_key,
+    Message, Lead, UsageLog, UsageAlert, ErrorLog, generate_bot_id, generate_api_key,
     WebhookConfig, ReportSchedule, Visitor, VisitorConversation,
     SalesConfig, BrandVoice, PendingEscalation, format_message_limit,
 )
 from backend.services.auth import hash_password, get_super_admin, validate_password_strength
+
+import structlog
+
+log = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -323,6 +327,44 @@ def reset_api_key(
     tenant.api_key = generate_api_key()
     db.commit()
     return {"ok": True, "api_key": tenant.api_key}
+
+
+# ── Right to erasure — delete tenant data, preserve account ───────────────────
+
+@router.delete("/tenants/{bot_id}/data")
+def delete_tenant_data(
+    bot_id: str,
+    confirm: bool = Query(False),
+    db: Session = Depends(get_db),
+    _: dict = Depends(get_super_admin),
+):
+    """Delete all data for a tenant while preserving the account itself.
+
+    Required for GDPR Article 17 compliance. Requires explicit confirmation
+    via ``?confirm=true`` query parameter.
+    Deletes: conversations (cascade deletes messages), leads, visitors,
+    usage_logs, usage_alerts.
+    Preserves: tenant account, bot_config, webhook_config, report_schedules.
+    """
+    if not confirm:
+        raise HTTPException(
+            status_code=400,
+            detail="Add ?confirm=true to confirm deletion",
+        )
+
+    counts = {}
+    for model, name in [(Conversation, "conversations"), (Lead, "leads"), (Visitor, "visitors"), (UsageLog, "usage_logs"), (UsageAlert, "usage_alerts")]:
+        counts[name] = db.query(model).filter(model.bot_id == bot_id).count()
+
+    db.query(UsageAlert).filter(UsageAlert.bot_id == bot_id).delete()
+    db.query(UsageLog).filter(UsageLog.bot_id == bot_id).delete()
+    db.query(Lead).filter(Lead.bot_id == bot_id).delete()
+    db.query(Conversation).filter(Conversation.bot_id == bot_id).delete()
+    db.query(Visitor).filter(Visitor.bot_id == bot_id).delete()
+    db.commit()
+
+    log.info("tenant_data_deleted", bot_id=bot_id, deleted_counts=counts)
+    return {"deleted": counts}
 
 
 # ── Super admin password change ────────────────────────────────────────────────
