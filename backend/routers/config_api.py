@@ -25,6 +25,24 @@ class BotConfigSchema(BaseModel):
     business_name: str
     agent_name: str
     brand_color: str
+
+    @field_validator("brand_color")
+    @classmethod
+    def validate_hex_color(cls, v: str) -> str:
+        """Validate brand_color is a 6-digit hex color code.
+
+        Args:
+            v: Color string to validate.
+
+        Returns:
+            Validated color string.
+
+        Raises:
+            ValueError: If not a valid hex color.
+        """
+        if v and not re.match(r'^#[0-9a-fA-F]{6}$', v):
+            raise ValueError("brand_color must be a valid hex color e.g. #6366F1")
+        return v
     welcome_message: str
     # Optional + format-validated. "" / None / missing all coerce to None so
     # an empty form input doesn't 422 the save.
