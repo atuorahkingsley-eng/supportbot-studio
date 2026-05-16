@@ -235,7 +235,17 @@ export default function ChatWidget({ config, botId }) {
   // Core state
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
-  const [sessionId, setSessionId] = useState(null)
+  const [sessionId, setSessionId] = useState(() => {
+    try {
+      const existing = sessionStorage.getItem('supportbot_session_id')
+      if (existing) return existing
+      const fresh = 'sess_' + Math.random().toString(36).substring(2)
+      sessionStorage.setItem('supportbot_session_id', fresh)
+      return fresh
+    } catch {
+      return 'sess_' + Math.random().toString(36).substring(2)
+    }
+  })
   const [loading, setLoading] = useState(false)
   // Escalation flow: when true, the next assistant turn surfaces the contact
   // form (Flow B copy) instead of routing through Claude. The "shown" flag
