@@ -153,14 +153,14 @@ export default function EmbedChat() {
     if (detectEscalationIntent(userMsg) && !escalationShown) {
       setEscalationShown(true)
       setLastUserMessage(userMsg)
-      setMessages(prev => [...prev, { role: 'user', content: userMsg }, { role: 'assistant', content: 'Of course! Let me get someone for you right away.' }])
+      setMessages(prev => [...prev, { role: 'user', content: userMsg, _id: Date.now() + Math.random() }, { role: 'assistant', content: 'Of course! Let me get someone for you right away.', _id: Date.now() + Math.random() }])
       setTimeout(() => setContactFormMode('escalation_urgent'), 200)
       setLoading(false)
       return
     }
 
     setLastUserMessage(userMsg)
-    setMessages(prev => [...prev, { role: 'user', content: userMsg }])
+    setMessages(prev => [...prev, { role: 'user', content: userMsg, _id: Date.now() + Math.random() }])
 
     try {
       const r = await fetch('/api/chat/public', {
@@ -176,7 +176,7 @@ export default function EmbedChat() {
         }),
       })
       const data = await r.json()
-      setMessages(prev => [...prev, { role: 'assistant', content: data.reply }])
+      setMessages(prev => [...prev, { role: 'assistant', content: data.reply, _id: Date.now() + Math.random() }])
       if (data.is_returning) setIsReturning(true)
       if (data.detected_language) setDetectedLang(data.detected_language)
 
@@ -207,7 +207,7 @@ export default function EmbedChat() {
       }
       }
     } catch {
-      setMessages(prev => [...prev, { role: 'assistant', content: 'Sorry, something went wrong. Please try again.' }])
+      setMessages(prev => [...prev, { role: 'assistant', content: 'Sorry, something went wrong. Please try again.', _id: Date.now() + Math.random() }])
     } finally {
       setLoading(false)
       setInputMethod('text')
@@ -282,7 +282,7 @@ export default function EmbedChat() {
         }),
       })
       if (r.ok) {
-        setMessages(prev => [...prev, { role: 'assistant', content: 'We\'ve notified our team. Someone will get back to you shortly.' }])
+        setMessages(prev => [...prev, { role: 'assistant', content: 'We\'ve notified our team. Someone will get back to you shortly.', _id: Date.now() + Math.random() }])
       }
     } catch { /* escalation queued fallback */ }
     setEscReason('')
@@ -344,7 +344,7 @@ export default function EmbedChat() {
 
       <div style={{ flex: 1, overflowY: 'auto', padding: '16px 12px', display: 'flex', flexDirection: 'column', gap: 10 }}>
         {messages.map((msg, i) => (
-          <div key={i} style={{ display: 'flex', justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
+          <div key={msg._id || i} style={{ display: 'flex', justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
             <div style={{
               maxWidth: '82%',
               padding: '9px 13px',

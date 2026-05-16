@@ -252,10 +252,9 @@ async def capture_lead_public(
     if not check_bot_id_rate_limit(data.bot_id, get_remote_address(request), max_per_minute=20):
         raise HTTPException(status_code=429, detail="Rate limit exceeded for this bot")
 
-    from backend.database import Tenant as TenantModel
-    tenant = db.query(TenantModel).filter(
-        TenantModel.bot_id == data.bot_id,
-        TenantModel.is_active == True,
+    tenant = db.query(Tenant).filter(
+        Tenant.bot_id == data.bot_id,
+        Tenant.is_active == True,
     ).first()
     if not tenant:
         raise HTTPException(status_code=404, detail="Bot not found")

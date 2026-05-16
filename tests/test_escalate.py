@@ -21,15 +21,6 @@ import pytest
 from backend.database import Lead
 
 
-def _seed_telegram_settings(monkeypatch):
-    """The platform-wide telegram path is gated on settings.telegram_chat_id —
-    without a value, send_telegram_message returns False and the escalation
-    counts as fully failed. We mock the underlying send instead of the setting
-    so the test stays independent of config flag drift.
-    """
-    pass  # We patch send_telegram_message directly in each test.
-
-
 @pytest.fixture
 def patched_notifications(mocker):
     """Patch every outbound channel inside escalate.py to a truthy AsyncMock.

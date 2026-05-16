@@ -172,8 +172,6 @@ def test_upsert_works_on_sqlite(test_client, test_db, test_tenant):
     so the ``SessionLocal()`` call inside ``_log_daily_usage`` lands on
     our in-memory DB rather than whatever DATABASE_URL points to.
     """
-    from datetime import date
-
     from backend.main import _log_daily_usage
 
     # First call: INSERT path. Must not raise TypeError.

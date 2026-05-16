@@ -430,6 +430,7 @@ export default function ChatWidget({ config, botId }) {
     setMessages(prev => [...prev, {
       role: 'user', content: userMsg,
       voice: method === 'voice',
+      _id: Date.now() + Math.random(),
     }])
     setSalesAction(null)
     setShowProactive(false)
@@ -438,9 +439,10 @@ export default function ChatWidget({ config, botId }) {
     if (!escalatedRef.current && !escalateFormShownRef.current && detectEscalationIntent(userMsg)) {
       setEscalateFormShown(true)
       setMessages(prev => [...prev, {
-        role: 'assistant',
-        content: 'Of course! Let me get someone for you right away.',
-        auto: false,
+      role: 'assistant',
+      content: 'Of course! Let me get someone for you right away.',
+      auto: false,
+      _id: Date.now() + Math.random(),
       }])
       setShowEscalateForm(true)
       return
@@ -470,6 +472,7 @@ export default function ChatWidget({ config, botId }) {
 
       setMessages(prev => [...prev, {
         role: 'assistant', content: data.reply, auto: data.was_auto_reply,
+        _id: Date.now() + Math.random(),
       }])
 
       if (data.needs_escalation && !escalatedRef.current && !escalateFormShownRef.current) {
@@ -479,6 +482,7 @@ export default function ChatWidget({ config, botId }) {
     } catch {
       setMessages(prev => [...prev, {
         role: 'assistant', content: 'Sorry, something went wrong. Please try again.', auto: false,
+        _id: Date.now() + Math.random(),
       }])
     } finally {
       setLoading(false)
@@ -503,6 +507,7 @@ export default function ChatWidget({ config, botId }) {
       role: 'assistant',
       content: 'Thanks! A team member will be in touch shortly.',
       auto: false,
+      _id: Date.now() + Math.random(),
     }])
     addToast('Escalation sent — a human will reach out soon!', 'success')
     try {
@@ -534,6 +539,7 @@ export default function ChatWidget({ config, botId }) {
       role: 'assistant',
       content: 'No problem — feel free to keep chatting and a team member will join when available.',
       auto: false,
+      _id: Date.now() + Math.random(),
     }])
     // Fire the escalation anyway so the team is aware; contact fields blank
     // means the agent will need to follow up inside the chat.
@@ -575,6 +581,7 @@ export default function ChatWidget({ config, botId }) {
       role: 'assistant',
       content: "Thanks! We'll get back to you shortly with more info.",
       auto: false,
+      _id: Date.now() + Math.random(),
     }])
     addToast('Got it — info is on the way!', 'success')
     try {
@@ -605,6 +612,7 @@ export default function ChatWidget({ config, botId }) {
       role: 'assistant',
       content: 'No problem! Let me know if you have any other questions.',
       auto: false,
+      _id: Date.now() + Math.random(),
     }])
     fetch('/api/sales/leads/capture', {
       method: 'POST',
@@ -754,7 +762,7 @@ export default function ChatWidget({ config, botId }) {
             display: 'flex', flexDirection: 'column', gap: 10, background: '#F8F8FA',
           }}>
             {messages.map((msg, i) => (
-              <div key={i} style={{
+              <div key={msg._id || i} style={{
                 display: 'flex', justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start',
                 flexDirection: 'column', alignItems: msg.role === 'user' ? 'flex-end' : 'flex-start',
               }}>

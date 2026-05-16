@@ -27,7 +27,6 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 _TABLES = [
-    "alembic_version",
     "bot_config",
     "brand_voices",
     "conversations",

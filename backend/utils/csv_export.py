@@ -3,7 +3,7 @@ import io
 from typing import List
 
 
-_FORMULA_LEAD = ("=", "+", "-", "@")
+_FORMULA_LEAD = ("=", "+", "-", "@", "\t", "\r")
 
 
 def _safe_cell(value):
