@@ -124,8 +124,17 @@ async def _generate_qa_pairs(text: str) -> List[dict]:
             # Extract JSON array
             match = re.search(r'\[.*\]', content, re.DOTALL)
             if match:
-                pairs = json.loads(match.group())
-                all_pairs.extend(pairs)
+                parsed = json.loads(match.group())
+                if isinstance(parsed, list):
+                    all_pairs.extend(parsed)
+                elif isinstance(parsed, dict):
+                    all_pairs.append(parsed)
+                else:
+                    log.warning(
+                        "doc_processor_unexpected_json_type",
+                        type=type(parsed).__name__,
+                        preview=str(parsed)[:100],
+                    )
         except Exception:
             continue
 
