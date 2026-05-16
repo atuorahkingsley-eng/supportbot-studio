@@ -178,7 +178,9 @@ async def send_escalation_email(
         log.error(
             "escalation_email_http_error",
             error=str(e),
-            to=to_email,
+            to_domain=to_email.split("@")[-1]
+                if to_email and "@" in to_email
+                else "unknown",
             bot=bot_name,
         )
         return False
@@ -190,7 +192,9 @@ async def send_escalation_email(
         log.error(
             "escalation_email_unexpected_error",
             error=str(e),
-            to=to_email,
+            to_domain=to_email.split("@")[-1]
+                if to_email and "@" in to_email
+                else "unknown",
             bot=bot_name,
         )
         return False
@@ -205,7 +209,9 @@ async def send_escalation_email(
             pass
         log.info(
             "escalation_email_sent",
-            to=to_email,
+            to_domain=to_email.split("@")[-1]
+                if to_email and "@" in to_email
+                else "unknown",
             bot=bot_name,
             session=session_id,
             resend_id=resend_id,
