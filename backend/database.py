@@ -205,6 +205,12 @@ class BotConfig(Base):
     # bot first — Telegram's restriction, not ours). Sent IN ADDITION TO the
     # platform-wide TELEGRAM_CHAT_ID, never instead of it.
     telegram_handle = Column(String, nullable=True)
+    # Per-tenant free-text instructions appended to the system prompt AFTER
+    # all platform rules (visitor / language / sales / brand-voice / FAQ).
+    # Empty/null = use default behaviour. Appended LAST by design so the
+    # tenant-controlled text cannot override platform rules sitting above
+    # it — same prompt-injection defence pattern as <agent_name>/<business_name>.
+    custom_instructions = Column(Text, nullable=True, default=None)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
@@ -360,6 +366,13 @@ class Lead(Base):
     # the migration without a Python pass.
     type = Column(String, nullable=False, default="lead", server_default="lead", index=True)
     status = Column(String, nullable=False, default="new", server_default="new", index=True)
+    # Why the bot escalated — set only when type='escalation'. One of:
+    #   explicit_request | frustration | urgency | sensitive_topic |
+    #   unresolved_loop | no_faq_answer
+    # Indexed because the Leads dashboard filters by reason. Nullable because
+    # type='lead' rows have no escalation context, and legacy escalation rows
+    # written before the chain-of-thought upgrade have no reason data.
+    escalation_reason = Column(String, nullable=True, index=True)
 
 
 # ── Brand Voice DNA ───────────────────────────────────────────────────────────
