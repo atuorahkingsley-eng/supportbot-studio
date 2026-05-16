@@ -91,6 +91,10 @@ def create_tenant(
     bot_id = generate_bot_id()
     api_key = generate_api_key()
 
+    strength_error = validate_password_strength(data.password)
+    if strength_error:
+        raise HTTPException(status_code=422, detail=f"Password too weak: {strength_error}")
+
     tenant = Tenant(
         bot_id=bot_id,
         owner_name=data.owner_name,

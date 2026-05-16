@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from backend.database import init_db, SessionLocal
 from backend.services.report_scheduler import start_scheduler, stop_scheduler
@@ -260,7 +261,14 @@ async def lifespan(app: FastAPI):
     stop_scheduler()
 
 
-app = FastAPI(title="SupportBot Studio v2 (Multi-Tenant + Auto-Healing)", lifespan=lifespan)
+_is_production = not settings.skip_boot_guard
+app = FastAPI(
+    title="SupportBot Studio API",
+    docs_url="/docs" if not _is_production else None,
+    redoc_url="/redoc" if not _is_production else None,
+    openapi_url="/openapi.json" if not _is_production else None,
+    lifespan=lifespan,
+)
 
 # ── Rate limiting ──────────────────────────────────────────────────────────────
 app.state.limiter = limiter
@@ -270,6 +278,36 @@ app.add_exception_handler(RateLimitExceeded, rate_limit_handler)
 # Tiered CORS: public widget endpoints accept any origin (no cookies);
 # admin/auth endpoints lock to APP_URL with credentials. ErrorHandler wraps under.
 APP_URL = settings.app_url
+
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Add security headers to all responses.
+
+    Prevents clickjacking, MIME-sniffing, XSS, SSL-stripping,
+    and referrer leakage.
+    """
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+
+        response.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "SAMEORIGIN"
+        response.headers["X-XSS-Protection"] = "0"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+
+        if not request.url.path.startswith("/embed/"):
+            response.headers["Content-Security-Policy"] = (
+                "default-src 'self'; "
+                "script-src 'self' 'unsafe-inline'; "
+                "style-src 'self' 'unsafe-inline'; "
+                "img-src 'self' data: https:; "
+                "connect-src 'self' https://api.resend.com https://api.anthropic.com; "
+                "frame-src 'self'; "
+                "frame-ancestors 'self';"
+            )
+
+        return response
 
 
 class TieredCORSMiddleware:
@@ -325,6 +363,7 @@ class TieredCORSMiddleware:
 
 
 app.add_middleware(TieredCORSMiddleware, app_url=APP_URL)
+app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(ErrorHandlerMiddleware)
 
 # ── API routers ────────────────────────────────────────────────────────────────

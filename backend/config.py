@@ -71,4 +71,13 @@ if not settings.skip_boot_guard:
             print(f"STARTUP BLOCKED: {key} is missing or still set to default.", file=sys.stderr, flush=True)
             sys.exit(1)
 
+    if len(settings.jwt_secret_key) < 32:
+        print(
+            "FATAL: JWT_SECRET_KEY must be at least 32 characters. Generate one with: "
+            'python -c "import secrets; print(secrets.token_hex(32))"',
+            file=sys.stderr,
+            flush=True,
+        )
+        sys.exit(1)
+
 print("Boot guard passed.", flush=True)
